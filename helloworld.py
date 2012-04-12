@@ -32,6 +32,23 @@ def getNoneRefereceProperties(model):
 '''
 only non reference properties are saved in this method 
 ''' 
+
+class EntityCollectionRequest(webapp2.RequestHandler):
+    def get(self):        
+        model = eval(self.request.get('model'))        
+        entity = EntityRequest.getEntityFromRequest(model, self.request)
+        
+        if entity:
+            itemModelName = self.request.get('itemModelName')  
+            items = getattr(entity, itemModelName.lower() + '_set')().get()
+        else:pass            
+            
+        self.response.out.write(json.dumps([{"a":"b"},
+                                            {"c":"d"}]));
+
+class KeyType:
+    ID='id'
+    KEYNAME='key_name'
             
 """""""""
 models
@@ -41,6 +58,7 @@ class Customer(db.Model):
     lastname = db.StringProperty()
     contact = db.StringProperty()
     address = db.StringProperty()
+    keyType = KeyType.ID
     
 ''' vechile search is the entry point
     of the system, all related info is
@@ -59,22 +77,10 @@ class Vechile(db.Model):
     turbo = db.StringProperty()
     color = db.StringProperty()
     owner = db.ReferenceProperty(Customer)
+    collectionModels = ['Invoice']
+    referencedModels = ['Customer']
+    keyType = KeyType.KEYNAME
 
-class EntityCollectionRequest(webapp2.RequestHandler):
-    def get(self):        
-        model = eval(self.request.get('model'))        
-        entity = EntityRequest.getEntityFromRequest(model, self.request)
-        
-        if entity:
-            itemModelName = self.request.get('itemModelName')  
-            items = getattr(entity, itemModelName.lower() + '_set')().get()
-        else:pass            
-            
-        self.response.out.write(json.dumps([{"a":"b"},
-                                            {"c":"d"}]));
-        
-        
-        
  
 ''' invoice links to customer, vechile and invoice items.
     use refereceProperty back reference to check invoice 
@@ -84,6 +90,9 @@ class Invoice(db.Model):
     vechile = db.ReferenceProperty(Vechile)
     labour = db.FloatProperty()
     notes = db.TextProperty()
+    collectionModels = ['InvoiceItem']
+    keyType = KeyType.ID
+    
         
 ''' invoice items are grouped by invoice key '''
 class InvoiceItem(db.Model):
@@ -91,6 +100,7 @@ class InvoiceItem(db.Model):
     quantity = db.IntegerProperty()
     unitPrice = db.FloatProperty()
     invoice =db.ReferenceProperty(Invoice)
+    keyType = KeyType.ID
 
 
 """""""""""""""""
@@ -179,6 +189,22 @@ class EntityRequest(webapp2.RequestHandler):
         else:
             logging.info('entity found')
             
+        # reference and referenced by property is what the entity needs to fetch after 
+        # when new entity is created or existing entity is fetched
+        # refernce property is entitty
+        # referecnedBy property is entityCollection
+        
+        # construct a reference property list
+        referenceList = []
+        if(hasattr(model,'referenceVars')):
+            for var in model.referenceVars:
+                referenceModelKeyType = eval(var.capitalize()).keyType
+                referenceModelKeyValue = getattr(entity,var).id_or_name()
+                referenceList.append({referenceModelKeyType:referenceModelKeyValue})                 
+        
+        
+        
+            
         
     def post(self):
         model = eval(self.request.get('model'))   
@@ -216,17 +242,10 @@ class TestEntity(db.Model):
     
 class Test(webapp2.RequestHandler):
     def get(self):
-        t1 = TestEntity(key_name="start")
-        t1.p1 = "in t1"
         
-        t2 = TestEntity()
-        t2.p1 = "in t2"
-        
-        t1.put()
-        t2.put()
         
 #        rt1keystr = str(TestEntity.get_by_key_name('start').key())
-        self.response.out.write(t2.key().id_or_name())
+        self.response.out.write(hasattr(Vechile, 'gsfsdf'))
         
 app = webapp2.WSGIApplication([('/', Main),
                                ('/entity', EntityRequest),

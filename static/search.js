@@ -38,14 +38,7 @@
 						name : 'Vechile',
 						key: {type: 'key_name', value: rego}						
 					});
-					vechile.fetch({success:function() {
-						var collection = new EntityCollection({
-							itemModelName: 'Invoice',
-							referencedBy: vechile
-						});
-
-						collection.fetch();
-					}});
+					vechile.fetch();					
 				}
 			}, this.delay);
 		}
