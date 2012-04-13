@@ -87,14 +87,31 @@
     },
 
     attrsChange: function() {
-      // // if not new modje, then just appeindgn or replace read views
-      // // depending on if the filed onctiner is already there      
-      // var view = new FieldsView ({
-      //   model: this.modelName,
-      //   fields: this.changedAttributes(),
-      //   isNew: this.isNew()        
-      // });  
+      // create a new view if any entity attributes changed
       var newView = new FieldsView({model:this});
+      
+      // also need to change referenced entities status
+      var referenceList = JSON.parse(this.get('references'));
+
+      _.each(referenceList, function(referenceMetaData) {
+          var modelName = referenceMetaData.modelName;
+          var referenceKeyType = referenceMetaData.keyType;
+          var referenceKeyValue = referenceMetaData.keyValue;
+
+          if (! this.isNew()) {
+            var referencedEntity = new Entity({
+              name : modelName,
+              key: { type: referenceKeyType, value: referenceKeyValue }
+            });
+            referencedEntity.fetch();
+          }
+
+          else {
+            // if the entity IS NEW, remove any referenced entity
+            // containers for previous searched entity
+            $('#' + modelName + '-container').remove();
+          }
+      }, this);
     }
   });
   exports.Entity = Entity;
@@ -115,26 +132,24 @@
     },
 
     parse: function(response) {
-      _.each($.makeArray(response), function(obj){
-        var entity = new Entity( {
-            name : this.itemModelName,
-            key: {type: 'key_name'}            
-          });
+      // _.each($.makeArray(response), function(obj){
+      //   var entity = new Entity( {
+      //       name : this.itemModelName,
+      //       key: {type: 'key_name'}            
+      //     });
 
-          entity.set(obj);  
-      }, this);          
+      //     entity.set(obj);  
+      // }, this);          
     }
   });
   exports.EntityCollection = EntityCollection;
 
 
   // @usage:
-  // var view = new FieldsView({
-  //       model: this.get('model'),
-  //       attrs: this.changedAttributes(),
-  //       isNew: this.isNew()
-  //     });  
+  // var newView = new FieldsView({model:entityinstance});  
+  //
   var FieldsView = Backbone.View.extend({
+
     initialize : function(cfg) {      
       if (!cfg.model)
         throw "entity instance of required for fields view"
@@ -188,26 +203,28 @@
         })
       }
 
-      // also add a save and cancle button if the entity
-      // is going to be created
-      if (this.model.isNew()) {        
-        
-        var entityContainer = getOrCreateContainer({          
+      var entityContainer = getOrCreateContainer({          
           id: this.model.modelName,
           type: 'entity'
-        });        
+        });
 
-        if (!entityContainer.has($('.link-button.save')).length) {
-          var saveBtnEl = $(_.template($("#tpl-link-btn").html(), {
-            btnType : Buttons.SAVE,
-            modelType: 'entity',
-            btnText : 'Save this ' + this.model.modelName
-          }));
+      var hasSaveLinkButton = entityContainer.has($('.link-button.save')).length;
 
-          entityContainer.append(saveBtnEl);
-          this.setElement(entityContainer);  
-          $(this.el).unbind();  
-        }          
+      // also add a save and cancle button if the entity
+      // is going to be created
+      if (this.model.isNew() && !hasSaveLinkButton) {
+        var saveBtnEl = $(_.template($("#tpl-link-btn").html(), {
+          btnType : Buttons.SAVE,
+          modelType: 'entity',
+          btnText : 'Save this ' + this.model.modelName
+        }));
+
+        entityContainer.append(saveBtnEl);
+        this.setElement(entityContainer);  
+        $(this.el).unbind();  
+      }
+      else if (!this.model.isNew() && hasSaveLinkButton) {
+        entityContainer.find('.link-button.save').remove();
       }
     }
   });
