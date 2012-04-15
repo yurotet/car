@@ -57,29 +57,39 @@
       if (!cfg.name)
         throw "name of the entity is missing";
       if (!cfg.key)
-        throw "query id for the entity is missing"  
+        throw "key for the entity is missing"  
       if (!cfg.key.type)
-        throw "type of query for entity is missing" 
+        throw "type of query for entity is missing"
+      if (cfg.parent && !cfg.index)
+        throw "this entity has a parent but child index is not specified" 
 
       this.modelName = cfg.name;
       this.key = cfg.key;
+      this.parent =cfg.parent
+      this.index = cfg.index || '';
+      this.parentIndex = cfg.parentIndex || '';
 
       // resouce key for this entity is represented as
       //  a json string with key type and value    
-      var obj = {};
+      // var obj = {};
 
       // guess default value from key type
       if (this.key.type == 'key_name')
-        guessValue = 'radom-nonsence';
+        guessValue = 'guess-value';
       if (this.key.type == 'id')
         guessValue = -1;
 
-      value = this.key.value || guessValue;
-      obj[this.key.type] = value;
-      var idValue =  JSON.stringify( obj );
+      this.key.value = this.key.value || guessValue;
+      // keyObj[this.key.type] = value;
 
       // build resource url for this entity
-      this.keyUrl =  "model=" + this.modelName + "&id=" + idValue;
+      var keyJsonStr =  JSON.stringify( this.key );
+
+      this.keyUrl =  "model=" + this.modelName + "&key=" + keyJsonStr;
+      if ($(this.index).length) {
+        this.keyUrl += "&index=" + this.index;
+      }
+
       this.url = '/entity' + "?" + this.keyUrl
 
       _.bindAll(this, 'attrsChange');
@@ -88,11 +98,10 @@
 
     attrsChange: function() {
       // create a new view if any entity attributes changed
-      var newView = new FieldsView({model:this});
-      
-      // also need to change referenced entities status
+      var newView = new EntityView({model:this});
+   
+      // fetch referenced entities
       var referenceList = JSON.parse(this.get('references'));
-
       _.each(referenceList, function(referenceMetaData) {
           var modelName = referenceMetaData.modelName;
           var referenceKeyType = referenceMetaData.keyType;
@@ -105,13 +114,20 @@
             });
             referencedEntity.fetch();
           }
-
-          else {
-            // if the entity IS NEW, remove any referenced entity
-            // containers for previous searched entity
-            $('#' + modelName + '-container').remove();
-          }
       }, this);
+
+      // fetch entity collecions
+      var collectionList = JSON.parse(this.get('collections'));
+      _.each(collectionList, function(collectionModelName){
+        if (! this.isNew()) {
+          var collection = new EntityCollection({
+            itemModelName:collectionModelName,
+            referencedBy: this
+          });
+
+          collection.fetch();
+        }
+      }, this);      
     }
   });
   exports.Entity = Entity;
@@ -121,8 +137,8 @@
     initialize: function(cfg) {
       if (!cfg.itemModelName)
         throw "type of the colleciton item is missing"
-      if (!cfg.referencedBy)
-        throw "dont know how this collection is referecned"
+      if (! (cfg.referencedBy && cfg.referencedBy instanceof Entity) )
+        throw "the entity that reference this collection is missing"
 
       this.itemModelName = cfg.itemModelName;
       this.referencedBy = cfg.referencedBy; 
@@ -132,23 +148,27 @@
     },
 
     parse: function(response) {
-      // _.each($.makeArray(response), function(obj){
-      //   var entity = new Entity( {
-      //       name : this.itemModelName,
-      //       key: {type: 'key_name'}            
-      //     });
+      _.each($.makeArray(response), function(entityData){
+        var entity = new Entity( {
+            name : entityData.modelName,
+            key: entityData.key,
+            index: entityData.index,
+            parentIndex : entityData.parentIndex,
+            parent : entityData.parent         
+          });
 
-      //     entity.set(obj);  
-      // }, this);          
+          entity.set(entityData);
+
+      }, this);          
     }
   });
   exports.EntityCollection = EntityCollection;
 
 
   // @usage:
-  // var newView = new FieldsView({model:entityinstance});  
+  // var newView = new EntityView({model:entityinstance});  
   //
-  var FieldsView = Backbone.View.extend({
+  var EntityView = Backbone.View.extend({
 
     initialize : function(cfg) {      
       if (!cfg.model)
@@ -165,29 +185,32 @@
       'click .link-button.entity.save' : 'newEntity'
     },
 
-    newEntity: function() {        
-      var dataObj = {}; 
+    newEntity: function() {  
+      
       var inputs = $('#' + this.model.modelName + '-container').find('.field-container');
+      var dataObj = {};
 
       // extract key and value from eachinput box
-      _.each(inputs, function(el) {      
+      _.each(inputs, function(el) {    
+
         var idDataArr = $(el).find('.field-name').attr('id').split('-');        
         if (!idDataArr.length == 3)
           throw ("id for the field is not valid");
 
-        var key = idDataArr[1];
-        var value = $(el).find('.value-input').val();
+        var fieldName = idDataArr[1];
+        var fieldValue = $(el).find('.value-input').val();
 
         // only set vlaue for those fields that
         // the vlaue has explictily typed in         
-        if(value)  
-          dataObj[key] = value;    
+        if(fieldValue)  
+          dataObj[fieldName] = fieldValue;    
       });          
       
       this.model.save(dataObj, {wait : true});    
     },    
 
     render: function() {
+
       // display view for each field
       var fields = this.model.changedAttributes();
       for (field in fields) {
@@ -195,7 +218,7 @@
         var value = fields[name];
 
         // render view for individule field
-        var fieldView = new FieldView({
+        var newView = new EntityAttributeView({
           name: name,
           value: value, 
           mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
@@ -204,9 +227,22 @@
       }
 
       var entityContainer = getOrCreateContainer({          
-          id: this.model.modelName,
-          type: 'entity'
+          id: this.model.modelName + this.model.index,
+          type: 'entity',
+          rootSelector: this.model.parent? '#' + this.model.parent + this.model.parentIndex + '-container' : null
         });
+
+      // clean any previous entity referecnes if this entity is new
+      if (this.model.isNew()) {
+        // remove any colleciton items that this entity contains
+        entityContainer.find('.entity-container').remove();
+
+        // remove any referenced items that referenced by this entity
+        var referenceList = JSON.parse(this.model.get('references'));
+        _.each(referenceList, function(meta){
+          $('#' + meta.modelName + '-container').remove();
+        }, this);
+      }
 
       var hasSaveLinkButton = entityContainer.has($('.link-button.save')).length;
 
@@ -219,23 +255,25 @@
           btnText : 'Save this ' + this.model.modelName
         }));
 
-        entityContainer.append(saveBtnEl);
-        this.setElement(entityContainer);  
-        $(this.el).unbind();  
+        entityContainer.append(saveBtnEl);      
       }
       else if (!this.model.isNew() && hasSaveLinkButton) {
         entityContainer.find('.link-button.save').remove();
       }
+
+      this.setElement(entityContainer);  
+      $(this.el).unbind();
     }
   });
- 
-  // @usage:
-  //  var fieldView = new FieldView({
-  //         name: name;
-  //         value: value;
-  //         mode: this.isNew? EditModes.NEW : EditModes.READ
-  //       })
-  var FieldView = Backbone.View.extend({
+
+  // @usage
+  // var newView = new EntityAttributeView({
+  //   name: name,
+  //   value: value, 
+  //   mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
+  //   model: this.model
+  // })
+  var EntityAttributeView = Backbone.View.extend({
 
     initialize : function(cfg) {
       if (!cfg.name) throw "name of the field is requried";
@@ -271,29 +309,36 @@
       return fieldDataArr[1];
     },
 
+    getFieldValueFromInput: function(input) {
+      var fieldInputEl = input.siblings('.value-input');
+      return fieldInputEl.val();
+    },
+
     saveField: function(e) {
       var inputEl = $(e.currentTarget);
       var fieldName = this.getFieldNameFromInput(inputEl);
-      var fieldValue = inputEl.val();
-      var saveObj = {};
+      var fieldValue = this.getFieldValueFromInput(inputEl);
 
+      var saveObj = {};
       saveObj[fieldName] = fieldValue;
+
       this.model.save(saveObj, {wait:true});      
     },
 
     cancelField: function(e) {
+      // var view = new EntityAttributeView(this.model, EditModes.READ);
       // var view = new FiledView(this.model, EditModes.READ);
       console.log('cancel butoton clicked');
     },
 
     changeView: function(e) {
       // if (!this.model.get('readOnly')) {
-      //   var view = new FieldView(this.model, EditModes.EDIT));
+      //   var view = new EntityAttributeView(this.model, EditModes.EDIT));
       // }
 
       var fieldName = this.getFieldNameFromInput($(e.currentTarget));      
 
-      var newView = new FieldView( {
+      var newView = new EntityAttributeView( {
         mode: EditModes.UPDATE,
         name: fieldName,
         model: this.model
@@ -302,7 +347,7 @@
   
     render : function() {
       var fieldHtml = "";
-      var fieldId = [this.model, this.name, 'field'].join('-');
+      var fieldId = [this.model.modelName + this.model.index, this.name, 'field'].join('-');
 
       switch (this.mode) {
         case EditModes.NEW:          
@@ -340,21 +385,27 @@
 
       // append field element to the field container
       var fieldContainer = getOrCreateContainer({
-        id: [this.model.modelName, this.name].join('-'),
+        id: [this.model.modelName + this.model.index, this.name].join('-'),
         type: 'field'
       });
 
-      fieldContainer.empty();   
-      fieldContainer.append( $(fieldHtml) ); 
+      fieldContainer.empty();      
+      fieldContainer.append($(fieldHtml));
 
-      // append field container to entity container      
+      // append field container to entity container
       var entityContainer = getOrCreateContainer({
-        id: this.model.modelName,         
-        type: 'entity'
+        id: this.model.modelName + this.model.index,         
+        type: 'entity',
+        rootSelector: this.model.parent? '#' + this.model.parent + this.model.parentIndex + '-container' : null
       });
         
       if ( ! entityContainer.has(fieldContainer).length ) {
         entityContainer.append(fieldContainer);  
+      }
+      
+      // if the field is in edit mode, then set focus on it's text input box
+      if (this.mode == EditModes.UPDATE) {
+        fieldContainer.find('input[type="text"]').focus();
       }
 
       this.setElement(fieldContainer);

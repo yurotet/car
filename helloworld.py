@@ -26,6 +26,46 @@ class Entity:
             raise TypeError()
         
         return [k for k, v in model.properties().items() if not isinstance(v, db.ReferenceProperty)]
+    
+    @staticmethod
+    def dictionarizeEntity(model, entity):
+        ''' construct entity's none reference property list '''
+        fields = Entity.getNoneRefereceProperties(model)        
+        if entity:
+            retDict = dict((field, getattr(entity,field)) for field in fields)
+            retDict['id'] = entity.key().id_or_name()        
+        else:
+            retDict = dict((field, None) for field in fields)    
+        
+        ''' construct a reference property list '''
+        referenceList = [] 
+        
+        if(hasattr(model,'referenceVars')): 
+            for var in model.referenceVars:
+                ''' construct refercne entity type '''
+                referenceModelName = var.capitalize()            
+                referenceModelKeyType = eval(referenceModelName).keyType
+                
+                ''' construct referecne entity value '''
+                referenceModelKeyValue = None
+                if entity:
+                    referenceEntity = getattr(entity,var)
+                    if referenceEntity:
+                        referenceModelKeyValue = referenceEntity.key().id_or_name()
+                
+                referenceList.append({'modelName' : referenceModelName,
+                                      'keyType' : referenceModelKeyType,
+                                      'keyValue' : referenceModelKeyValue})                         
+        retDict['references'] = json.dumps(referenceList)
+                 
+        ''' construct a collection list '''
+        if(hasattr(model, 'collectionModels')):
+            retDict['collections'] = json.dumps(model.collectionModels);
+        else:
+            retDict['collections'] = json.dumps([])
+            
+        return retDict
+    
             
 """""""""
 models
@@ -48,10 +88,10 @@ class Vechile(db.Model):
     rego = db.StringProperty()
     make = db.StringProperty()
     model = db.StringProperty()
-    odometer = db.IntegerProperty()
+    odometer = db.StringProperty()
     transmission = db.StringProperty()
     year = db.StringProperty()
-    engineSize = db.FloatProperty()
+    engineSize = db.StringProperty()
     fuleType = db.StringProperty()
     bodyType = db.StringProperty()
     driveType = db.StringProperty()
@@ -68,17 +108,17 @@ class Vechile(db.Model):
     invice key is to group invoice items '''    
 class Invoice(db.Model):    
     vechile = db.ReferenceProperty(Vechile)
-    labour = db.FloatProperty()
-    notes = db.TextProperty()
+    labour = db.StringProperty()
+    notes = db.TextProperty()    
     collectionModels = ['InvoiceItem']
     keyType = Entity.KeyType.ID 
         
 ''' invoice items are grouped by invoice key '''
 class InvoiceItem(db.Model):
     description = db.TextProperty()
-    quantity = db.IntegerProperty()
-    unitPrice = db.FloatProperty()
-    invoice =db.ReferenceProperty(Invoice)
+    quantity = db.StringProperty()
+    unitPrice = db.StringProperty()
+    invoice = db.ReferenceProperty(Invoice)
     keyType = Entity.KeyType.ID
 
 
@@ -117,20 +157,39 @@ class InvoiceItem(db.Model):
 
 '''
 only non reference properties are saved in this method 
-''' 
+'''
 
 class EntityCollectionRequest(webapp2.RequestHandler):
-    def get(self):        
-        model = eval(self.request.get('model'))        
-        entity = EntityRequest.getEntityFromRequest(model, self.request)
-        
+    def get(self): 
+        retData = []     
+        parentName = self.request.get('model');
+        parentIndex = self.request.get('index')
+        parent = eval(parentName)       
+        entity = EntityRequest.getEntityFromRequest(parent, self.request) 
+           
         if entity:
             itemModelName = self.request.get('itemModelName')  
-            items = getattr(entity, itemModelName.lower() + '_set')().get()
-        else:pass            
+            items = getattr(entity, itemModelName.lower() + '_set')                    
+            if items:
+                for index, item in enumerate(items):
+                    model = item.__class__                    
+                    itemDict = Entity.dictionarizeEntity(model, item)
+                    itemDict['modelName'] = model.__name__
+                    itemDict['key'] = {'type':model.keyType, 'value':item.key().id_or_name()}
+                    itemDict['parent'] = parentName
+                    itemDict['parentIndex'] = parentIndex
+                    itemDict['index'] = index + 1
+                    retData.append(itemDict)
+#                    itemKeyValue = item.key().id_or_name()
+#                    itemKeyType = item.__class__.keyType                               
+#                    retData.append({'modelName'  :itemModelName,
+#                                'keyType' : itemKeyType,
+#                                'keyValue' : itemKeyValue,
+#                                'parent' : parentName,
+#                                'parentIndex' : parentIndex,
+#                                'index' : index+1})
             
-        self.response.out.write(json.dumps([{"a":"b"},
-                                            {"c":"d"}]));
+        self.response.out.write(json.dumps(retData));
                                             
 
 ''' resouce: /entity?model=Customer&id=12 '''
@@ -153,85 +212,84 @@ class EntityRequest(webapp2.RequestHandler):
         
         # based on the type of query key to determine
         # how to query the entity i.e. by id or by keyname  
-        queryIdData = json.loads(request.get('id'))
-        for k, v in queryIdData.items():
-            queryType = k
-            queryValue = v
+        queryKey = json.loads(request.get('key'))
+        queryType = queryKey['type']
+        queryValue = queryKey['value']
                    
         entity = getattr(model, 'get_by_' + queryType)(queryValue)
         
-        return entity  
-            
+        return entity 
+    
     @staticmethod
-    def buildEntityFromRequest(model, request):
-        if not issubclass(model, db.Model):
-            raise TypeError()
-        if not isinstance(request, webapp2.Request):
-            raise TypeError()
-       
-        instance = model()
-        
-        fields = Entity.getNoneRefereceProperties(model);    
+    def setEntityFromRequestPayload(entity, requestPayload):
+        fields = Entity.getNoneRefereceProperties(entity.__class__)
         for field in fields:
-            value = request.get(field)
-            if value:
-                setattr(instance, field, request.get(field))        
-        
-        return instance
+            setattr(entity,field,requestPayload[field]) 
+            
+        return entity
+            
+#    @staticmethod
+#    def buildEntityFromRequest(model, request):
+#        if not issubclass(model, db.Model):
+#            raise TypeError()
+#        if not isinstance(request, webapp2.Request):
+#            raise TypeError()
+#       
+#        instance = model()
+#        
+#        fields = Entity.getNoneRefereceProperties(model);    
+#        for field in fields:
+#            value = request.get(field)
+#            if value:
+#                setattr(instance, field, request.get(field))        
+#        
+#        return instance
            
-    def get(self): 
+    def get(self):        
         model = eval(self.request.get('model'))        
-        fields = Entity.getNoneRefereceProperties(model)              
-        entity = EntityRequest.getEntityFromRequest(model, self.request)
-                
-        ''' output entity schema if they do not exist in the server yet '''
-        if not entity:            
-            output = dict((field, None) for field in fields)            
-        else:
-            output = dict((field, getattr(entity,field)) for field in fields)
-
-        # reference and referenced by property is what the entity needs to fetch after 
-        # when new entity is created or existing entity is fetched
-        # refernce property is entitty
-        # referecnedBy property is entityCollection
-        
-        # construct a reference property list
-        referenceList = []        
-        if(hasattr(model,'referenceVars')):     
-            for var in model.referenceVars:
-                referenceModelName = var.capitalize()            
-                referenceModelKeyType = eval(referenceModelName).keyType
-                referenceModelKeyValue = getattr(entity,var).id_or_name() if entity else None
-                
-                referenceList.append({'modelName' : referenceModelName,
-                                      'keyType' : referenceModelKeyType,
-                                      'keyValue' : referenceModelKeyValue})                 
-        
-        output['references'] = json.dumps(referenceList)
-        
-        self.response.out.write(json.dumps(output))
+        entity = EntityRequest.getEntityFromRequest(model, self.request) 
+        outputDict = Entity.dictionarizeEntity(model, entity)
+                              
+        self.response.out.write(json.dumps(outputDict))
         
         
     def post(self):
-        model = eval(self.request.get('model'))   
+        model = eval(self.request.get('model'))
+        entityKey = json.loads(self.request.get('key'));
+        
+        if entityKey['type'] == Entity.KeyType.KEYNAME:
+            newEntity = model(key_name=entityKey['value'])
+        else:
+            newEntity = model()
+            
         requestPayload = json.loads(self.request.body)
-        requestPayload['id'] = 1
+        newEntity = EntityRequest.setEntityFromRequestPayload(newEntity, requestPayload)
+        newEntity.put()
+        
+        requestPayload['id'] = newEntity.key().id_or_name()
         self.response.out.write(json.dumps(requestPayload))
+#        if entityKeyJsonData:
+#            keyObj = json.loads(entityKeyJsonData)
+#            entity = 
+#        if (model.keyType == Entity.KeyType.KEYNAME):
+#             
+#        requestPayload = json.loads(self.request.body)
+#        requestPayload['id'] = 1
+#        self.response.out.write(json.dumps(requestPayload))
 #        entity = EntityRequest.buildEntityFromRequest(model, self.request)
 #        entity.put() 
 
     def put(self):
-        logging.info('put starting');
+        ''' get entity by it's key and value '''
+        model = eval(self.request.get('model'))
+        entity = EntityRequest.getEntityFromRequest(model, self.request)
+        
+        ''' update entity with request payload ''' 
+        requestPayload = json.loads(self.request.body)     
+        entity = EntityRequest.setEntityFromRequestPayload(entity, requestPayload)                
+        entity.put()
 
-
-
-
-
-
-
-
-
-
+''' application entry point '''
 class Main(webapp2.RequestHandler):
     def get(self):
         template = jinja_environment.get_template('index.html')
@@ -243,32 +301,53 @@ class Main(webapp2.RequestHandler):
         
         self.response.out.write(template.render(tplVals))
 
-#class TestCollection(webapp2.RequestHandler):
-#    def get(self):
-#        response = json.dumps({"a1":None,"a2":None})
-#        self.response.out.write(response)
-#    
-#class debug(webapp2.RequestHandler):
-#    def get(self):
-#        self.response.out.write('gsdfsdfd');
-#        
-#class TestEntity(db.Model):
-#    p1 = db.StringProperty()
-#    
-#class Test(webapp2.RequestHandler):
-#    def get(self):
+class Data(webapp2.RequestHandler):
+    def get(self):
+        customer = Customer()
+        customer.lastname = 'good'
+        customer.firstName = 'test'
+        customer.put()
         
+        vechile = Vechile(key_name = 'gt5')
+        vechile.bodyType = 'coupe'
+        vechile.engineSize = '2.5L'
+        vechile.fuleType = 'dessile'
+        vechile.color = 'sivler'
+        vechile.make = 'audi'
+        vechile.year = '2012'
+        vechile.odometer = '25000'
+        vechile.customer = customer
+        vechile.put()
         
-#        rt1keystr = str(TestEntity.get_by_key_name('start').key())
-        self.response.out.write(hasattr(Vechile, 'gsfsdf'))
+        invoice = Invoice()
+        invoice.labour = '700'
+        invoice.notes = 'test invoice 10'
+        invoice.vechile = vechile
+        invoice.put()
         
+        iv1 = InvoiceItem()
+        iv1.description ='invoice item 1'
+        iv1.quantity='2'
+        iv1.unitPrice='142'
+        iv1.invoice = invoice
+        iv1.put()
+       
+        iv2 = InvoiceItem()
+        iv2.description='invoice item 2'
+        iv2.quantity = '4'
+        iv2.unitPrice ='23'
+        iv2.invoice = invoice
+        iv2.put()            
+        
+        self.response.out.write('data imported')
+        
+''' applicaiton configrations '''        
 app = webapp2.WSGIApplication([('/', Main),
-                               ('/entity', EntityRequest),                               
+                               ('/entity', EntityRequest), 
+                               ('/data',Data),
                                ('/entityCollection',EntityCollectionRequest)],
                               debug=True)
-
 def main():
     run_wsgi_app(app)
-
 if __name__ == "__main__":
     main()
