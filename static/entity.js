@@ -102,7 +102,8 @@
    
       // fetch referenced entities
       var referenceList = JSON.parse(this.get('references'));
-      _.each(referenceList, function(referenceMetaData) {
+
+      _.each(referenceList, function(referenceMetaData, referenceIndex) {
           var modelName = referenceMetaData.modelName;
           var referenceKeyType = referenceMetaData.keyType;
           var referenceKeyValue = referenceMetaData.keyValue;
@@ -110,7 +111,10 @@
           if (! this.isNew()) {
             var referencedEntity = new Entity({
               name : modelName,
-              key: { type: referenceKeyType, value: referenceKeyValue }
+              key: { type: referenceKeyType, value: referenceKeyValue },
+              parent: this.modelName,
+              parentIndex: this.index,
+              index: referenceIndex + 1
             });
             referencedEntity.fetch();
           }
@@ -185,9 +189,8 @@
       'click .link-button.entity.save' : 'newEntity'
     },
 
-    newEntity: function() {  
-      
-      var inputs = $('#' + this.model.modelName + '-container').find('.field-container');
+    newEntity: function(e) {  console.log(e);
+      var inputs = $(e.currentTarget).parent('.entity-container').find('.field-container');      
       var dataObj = {};
 
       // extract key and value from eachinput box
@@ -203,10 +206,10 @@
         // only set vlaue for those fields that
         // the vlaue has explictily typed in         
         if(fieldValue)  
-          dataObj[fieldName] = fieldValue;    
+          dataObj[fieldName] = fieldValue;
       });          
       
-      this.model.save(dataObj, {wait : true});    
+      this.model.save(dataObj, {wait : true});
     },    
 
     render: function() {
@@ -232,16 +235,10 @@
           rootSelector: this.model.parent? '#' + this.model.parent + this.model.parentIndex + '-container' : null
         });
 
-      // clean any previous entity referecnes if this entity is new
+      
       if (this.model.isNew()) {
-        // remove any colleciton items that this entity contains
-        entityContainer.find('.entity-container').remove();
-
-        // remove any referenced items that referenced by this entity
-        var referenceList = JSON.parse(this.model.get('references'));
-        _.each(referenceList, function(meta){
-          $('#' + meta.modelName + '-container').remove();
-        }, this);
+        // clean any previous entity referecnes if this entity is new
+        entityContainer.find('.entity-container').remove();    
       }
 
       var hasSaveLinkButton = entityContainer.has($('.link-button.save')).length;

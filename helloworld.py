@@ -308,36 +308,9 @@ class Data(webapp2.RequestHandler):
         customer.firstName = 'test'
         customer.put()
         
-        vechile = Vechile(key_name = 'gt5')
-        vechile.bodyType = 'coupe'
-        vechile.engineSize = '2.5L'
-        vechile.fuleType = 'dessile'
-        vechile.color = 'sivler'
-        vechile.make = 'audi'
-        vechile.year = '2012'
-        vechile.odometer = '25000'
+        vechile = Vechile.get_by_key_name('t1')
         vechile.customer = customer
-        vechile.put()
-        
-        invoice = Invoice()
-        invoice.labour = '700'
-        invoice.notes = 'test invoice 10'
-        invoice.vechile = vechile
-        invoice.put()
-        
-        iv1 = InvoiceItem()
-        iv1.description ='invoice item 1'
-        iv1.quantity='2'
-        iv1.unitPrice='142'
-        iv1.invoice = invoice
-        iv1.put()
-       
-        iv2 = InvoiceItem()
-        iv2.description='invoice item 2'
-        iv2.quantity = '4'
-        iv2.unitPrice ='23'
-        iv2.invoice = invoice
-        iv2.put()            
+        vechile.put()       
         
         self.response.out.write('data imported')
         
