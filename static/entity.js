@@ -189,8 +189,12 @@
       'click .link-button.entity.save' : 'newEntity'
     },
 
-    newEntity: function(e) {  console.log(e);
-      var inputs = $(e.currentTarget).parent('.entity-container').find('.field-container');      
+    newEntity: function(e) {
+      
+      e.stopImmediatePropagation();
+
+      var parentEl = $(e.currentTarget).parent('.entity-container')
+      var inputs = parentEl.find('.field-container');      
       var dataObj = {};
 
       // extract key and value from eachinput box
@@ -206,11 +210,25 @@
         // only set vlaue for those fields that
         // the vlaue has explictily typed in         
         if(fieldValue)  
-          dataObj[fieldName] = fieldValue;
+          dataObj[fieldName] = fieldValue;    
       });          
+
+      // add referncedby entity to query url to set the relationship
+      var parentkeyContainer = $('#' + this.model.parent + this.model.parentIndex + '-key-container');
       
+      if(parentkeyContainer.length) {                
+       
+       var parentKeyJsonStr = parentkeyContainer.find('.field-value').text();         
+        if (!parentKeyJsonStr) 
+          throw ("parent key json must not be empty if entity's parent exits") 
+
+        var referencedKeyObj = {referenceModel: this.model.parent,
+                                referenceKey: parentKeyJsonStr}
+        this.model.url += '&referencedBy=' + JSON.stringify(referencedKeyObj);
+      }
+
       this.model.save(dataObj, {wait : true});
-    },    
+    },  
 
     render: function() {
 
@@ -254,6 +272,7 @@
 
         entityContainer.append(saveBtnEl);      
       }
+
       else if (!this.model.isNew() && hasSaveLinkButton) {
         entityContainer.find('.link-button.save').remove();
       }
