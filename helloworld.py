@@ -53,7 +53,6 @@ class Entity:
         
         ''' construct a reference property list '''
         referenceList = [] 
-        
         if(hasattr(model,'referenceVars')): 
             for var in model.referenceVars:
                 ''' construct refercne entity type '''

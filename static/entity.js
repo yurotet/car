@@ -236,28 +236,48 @@
       }
 
       this.model.save(dataObj, {wait : true});
-    },  
+    },
 
     render: function() {
+      // fileds that need to display
+      includedDisplayFields = ['key'];
+
+      // fields that dont need to display
+      excludeDisplayFields = ['id','model','name','parent','parentIndex','index','modelName'];
 
       // display view for each field
       var fields = this.model.attributes;    
 
-      _.each(fields, function(fieldValue,fieldName) {      
-        try {
-          // parsing null value
-          if (!fieldValue) throw "parsing null value";
+      _.each(fields, function(fieldValue,fieldName) {
 
-          // parsing non json value
+        try {          
+          if (!fieldValue) {
+           throw "render null values";
+          }
+
+          if (_.find(includedDisplayFields, function(e){ return e == fieldName})) {            
+            throw "render inlcuded fields values";
+          }
+          
+          // render non-json object fields
           JSON.parse(fieldValue);
         }
-        catch(e){ // only render for those non json value fields          
-          var newView = new EntityAttributeView({
-            name: fieldName,
-            value: fieldValue, 
-            mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
-            model: this.model
-          });
+        catch(e){
+
+          if (!_.find(excludeDisplayFields, function(e) {return e == fieldName})) { 
+            // stringfy json values
+            if($.isPlainObject(fieldValue)) {
+              fieldValue = JSON.stringify(fieldValue);              
+            }
+
+            // only render those fields not in excluded fields    
+            var newView = new EntityAttributeView({
+              name: fieldName,
+              value: fieldValue, 
+              mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
+              model: this.model
+            });
+          }  
         }        
       }, this);
 
