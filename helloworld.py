@@ -28,6 +28,20 @@ class Entity:
         return [k for k, v in model.properties().items() if not isinstance(v, db.ReferenceProperty)]
     
     @staticmethod
+    def getEntityFromKeyJson(model, queryKey):   
+        if not issubclass(model, db.Model):
+            raise TypeError()
+        
+        # based on the type of query key to determine
+        # how to query the entity i.e. by id or by keyname  
+        queryType = queryKey['type']
+        queryValue = queryKey['value']
+                   
+        entity = getattr(model, 'get_by_' + queryType)(queryValue)
+        
+        return entity 
+    
+    @staticmethod
     def dictionarizeEntity(model, entity):
         ''' construct entity's none reference property list '''
         fields = Entity.getNoneRefereceProperties(model)        
@@ -193,10 +207,11 @@ only non reference properties are saved in this method
 class EntityCollectionRequest(webapp2.RequestHandler):
     def get(self): 
         retData = []     
-        parentName = self.request.get('model');
+        parentName = self.request.get('model')
         parentIndex = self.request.get('index')
+        jsonKey = json.loads(self.request.get('key'))
         parent = eval(parentName)       
-        entity = EntityRequest.getEntityFromRequest(parent, self.request) 
+        entity = Entity.getEntityFromKeyJson(parent, jsonKey) 
            
        
         if entity:
@@ -236,23 +251,6 @@ class EntityRequest(webapp2.RequestHandler):
         return dict((k, v) for k, v in request.GET.items() if not k in excludeKeys) 
     
     @staticmethod
-    def getEntityFromRequest(model, request):        
-        if not issubclass(model, db.Model):
-            raise TypeError()
-        if not isinstance(request, webapp2.Request):
-            raise TypeError()
-        
-        # based on the type of query key to determine
-        # how to query the entity i.e. by id or by keyname  
-        queryKey = json.loads(request.get('key'))
-        queryType = queryKey['type']
-        queryValue = queryKey['value']
-                   
-        entity = getattr(model, 'get_by_' + queryType)(queryValue)
-        
-        return entity 
-    
-    @staticmethod
     def setEntityFromRequestPayload(entity, requestPayload):
         fields = Entity.getNoneRefereceProperties(entity.__class__)
         for field in fields:
@@ -278,27 +276,44 @@ class EntityRequest(webapp2.RequestHandler):
 #        return instance
            
     def get(self):        
-        model = eval(self.request.get('model'))        
-        entity = EntityRequest.getEntityFromRequest(model, self.request) 
+        model = eval(self.request.get('model')) 
+        jsonKey = json.loads(self.request.get('key'))      
+        entity = Entity.getEntityFromKeyJson(model, jsonKey) 
         outputDict = Entity.dictionarizeEntity(model, entity)
                               
         self.response.out.write(json.dumps(outputDict))
         
         
     def post(self):
-        model = eval(self.request.get('model'))
-        entityKey = json.loads(self.request.get('key'));
+        modelName = self.request.get('model')
+        model = eval(modelName)
+        keyJsonStr = self.request.get('key')          
+        entityKey = json.loads(keyJsonStr);
         
         if entityKey['type'] == Entity.KeyType.KEYNAME:
             newEntity = model(key_name=entityKey['value'])
         else:
-            newEntity = model()
-            
-        requestPayload = json.loads(self.request.body)
+            newEntity = model()  
+                          
+        requestPayload = json.loads(self.request.body)      
         newEntity = EntityRequest.setEntityFromRequestPayload(newEntity, requestPayload)
-        newEntity.put()
         
+        newEntity.put()
+        entityKey['value'] = newEntity.key().id_or_name()
+        
+        ''' set new entity as the reference '''
+        referencedByJsonStr = self.request.get('referencedBy')
+        if referencedByJsonStr:
+            referencedBy = json.loads(referencedByJsonStr);
+            referenceModel = eval(referencedBy['referenceModel'])
+            referenceKey = json.loads(referencedBy['referenceKey']);
+            referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
+            setattr(referenceEntity, modelName.lower(), newEntity)
+            referenceEntity.put()
+            
         requestPayload['id'] = newEntity.key().id_or_name()
+        requestPayload['key'] = json.dumps(entityKey)
+        
         self.response.out.write(json.dumps(requestPayload))
 #        if entityKeyJsonData:
 #            keyObj = json.loads(entityKeyJsonData)
@@ -317,7 +332,8 @@ class EntityRequest(webapp2.RequestHandler):
     def put(self):
         ''' get entity by it's key and value '''
         model = eval(self.request.get('model'))
-        entity = EntityRequest.getEntityFromRequest(model, self.request)
+        jsonkey = json.loads(self.request.get('key'))
+        entity = Entity.getEntityFromKeyJson(model, jsonkey)
         
         ''' update entity with request payload ''' 
         requestPayload = json.loads(self.request.body)     
