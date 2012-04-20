@@ -66,6 +66,37 @@ class Entity:
             
         return retDict
     
+    ''' acceptable params:
+        - entityDictionary
+        - model
+        - entity
+        - parrentName
+        - parentIndex
+        - index
+     '''
+    @staticmethod        
+    def addIdParamsForEntityDictionary(entityDictionary, **args):
+        if not entityDictionary:
+            raise "entity dictonary is missing"
+            
+        model = args['model']
+        entity = args['entity']
+        
+        if not model or not issubclass(model, db.Model):
+            raise TypeError()            
+        if not entityDictionary:
+            raise "entity dictionary is missing"
+        
+        modelName = model.__name__
+        modelKeyType = model.keyType
+        modelKeyValue = entity.key().id_or_name() if entity else None
+        
+        entityDictionary['modelName'] = modelName
+        entityDictionary['key'] = {'type':modelKeyType, 'value':modelKeyValue}
+        entityDictionary['parent'] = args['parentName']
+        entityDictionary['parentIndex'] = args['parentIndex']
+        entityDictionary['index'] = args['index'] + 1
+    
             
 """""""""
 models
@@ -167,28 +198,29 @@ class EntityCollectionRequest(webapp2.RequestHandler):
         parent = eval(parentName)       
         entity = EntityRequest.getEntityFromRequest(parent, self.request) 
            
+       
         if entity:
             itemModelName = self.request.get('itemModelName')  
-            items = getattr(entity, itemModelName.lower() + '_set')                    
-            if items:
-                for index, item in enumerate(items):
-                    model = item.__class__                    
-                    itemDict = Entity.dictionarizeEntity(model, item)
-                    itemDict['modelName'] = model.__name__
-                    itemDict['key'] = {'type':model.keyType, 'value':item.key().id_or_name()}
-                    itemDict['parent'] = parentName
-                    itemDict['parentIndex'] = parentIndex
-                    itemDict['index'] = index + 1
-                    retData.append(itemDict)
-#                    itemKeyValue = item.key().id_or_name()
-#                    itemKeyType = item.__class__.keyType                               
-#                    retData.append({'modelName'  :itemModelName,
-#                                'keyType' : itemKeyType,
-#                                'keyValue' : itemKeyValue,
-#                                'parent' : parentName,
-#                                'parentIndex' : parentIndex,
-#                                'index' : index+1})
-            
+            collectionEntities = getattr(entity, itemModelName.lower() + '_set')
+                                
+            if collectionEntities:
+                
+                for index, entity in enumerate(collectionEntities):
+                    model = entity.__class__                    
+                    entityDictionary = Entity.dictionarizeEntity(model, entity)
+                    additionalParamsForEntity = {'model':model, 
+                                                 'entity':entity,
+                                                 'parent':parentName,
+                                                 'parentIndex':parentIndex,
+                                                 'index':index+1}
+                    
+                    Entity.addIdParamsForEntityDictionary(entityDictionary, **additionalParamsForEntity)
+                    
+                    retData.append(entityDictionary)
+                    
+            ''' add another empty record for continous input '''
+            emptyRecord = Entity.dictionarizeEntity(eval(itemModelName),None)
+             
         self.response.out.write(json.dumps(retData));
                                             
 
@@ -278,6 +310,9 @@ class EntityRequest(webapp2.RequestHandler):
 #        self.response.out.write(json.dumps(requestPayload))
 #        entity = EntityRequest.buildEntityFromRequest(model, self.request)
 #        entity.put() 
+
+        ''' get the rejference , create entity and set the referecne'''
+        
 
     def put(self):
         ''' get entity by it's key and value '''

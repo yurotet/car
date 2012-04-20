@@ -12,3 +12,4 @@ handlers:
   static_dir: static
 - url: /.*
   script: helloworld.py
+  login: required
