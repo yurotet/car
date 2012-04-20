@@ -94,7 +94,7 @@ class Entity:
             raise "entity dictonary is missing"
             
         model = args['model']
-        entity = args['entity']
+        entity = args['entity'] if args.has_key('entity') else None
         
         if not model or not issubclass(model, db.Model):
             raise TypeError()            
@@ -107,11 +107,10 @@ class Entity:
         
         entityDictionary['modelName'] = modelName
         entityDictionary['key'] = {'type':modelKeyType, 'value':modelKeyValue}
-        entityDictionary['parent'] = args['parentName']
-        entityDictionary['parentIndex'] = args['parentIndex']
-        entityDictionary['index'] = args['index'] + 1
-    
-            
+        entityDictionary['parent'] = args['parent'] if args.has_key('parent') else None
+        entityDictionary['parentIndex'] = args['parentIndex'] if args.has_key('parentIndex') else None
+        entityDictionary['index'] = args['index'] + 1 if args.has_key('index') else None
+        
 """""""""
 models
 
@@ -167,61 +166,22 @@ class InvoiceItem(db.Model):
     keyType = Entity.KeyType.ID
 
 
-#"""""""""""""""""
-#request handlers 
-#"""""""""""""""""
-#''' get: /invoice?id=12
-#post: customer=124&vechile=1413&labour=134&notes="sdfsd"
-#'''
-#class InvoiceRequest(webapp2.RequestHandler):
-#    def get(self):
-#        invoiceId = self.request.get('id')
-#        invoice = Invoice.get_by_id(invoiceId)            
-#    
-#    def post(self):    
-#        def saveInvoice():                                    
-#            invoiceItemIds = map(lambda id:Invoice.get_by_id(id), self.request.get_all('items'))
-#            
-#            if invoiceItemIds:
-#                ownerId = self.request.get('customer')
-#                vechileId = self.request.get('vechile')
-#                
-#                owner = Customer.get_by_id(ownerId)
-#                vechile = Vechile.get_by_id(vechileId)
-#                
-#                invoice = EntityRequest.buildEntityFromRequest(Invoice, self.request)                
-#                invoice.owner = owner
-#                invoice.vechile = vechile
-##                invoice.put()
-#                         
-#                for invoiceItem in invoiceItemIds:
-#                    invoiceItem.invoice = invoice
-##                    invoiceItem.put()
-#                                
-#        db.run_in_transaction(saveInvoice)
-
-'''
-only non reference properties are saved in this method 
-'''
-
 class EntityCollectionRequest(webapp2.RequestHandler):
     def get(self): 
         retData = []     
         parentName = self.request.get('model')
         parentIndex = self.request.get('index')
         jsonKey = json.loads(self.request.get('key'))
-        parent = eval(parentName)       
-        entity = Entity.getEntityFromKeyJson(parent, jsonKey) 
-           
+        
+        entity = Entity.getEntityFromKeyJson(eval(parentName), jsonKey)         
        
         if entity:
             itemModelName = self.request.get('itemModelName')  
             collectionEntities = getattr(entity, itemModelName.lower() + '_set')
-                                
-            if collectionEntities:
-                
+            model = eval(itemModelName)
+            
+            if collectionEntities:                
                 for index, entity in enumerate(collectionEntities):
-                    model = entity.__class__                    
                     entityDictionary = Entity.dictionarizeEntity(model, entity)
                     additionalParamsForEntity = {'model':model, 
                                                  'entity':entity,
@@ -234,7 +194,14 @@ class EntityCollectionRequest(webapp2.RequestHandler):
                     retData.append(entityDictionary)
                     
             ''' add another empty record for continous input '''
-            emptyRecord = Entity.dictionarizeEntity(eval(itemModelName),None)
+            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
+            additionalEmptyEntityDictionary = {'model':model,
+                                         'parent':parentName,
+                                         'parentIndex':parentIndex,
+                                         'index':0                                       
+                                         }
+            Entity.addIdParamsForEntityDictionary(emptyEntityDictionary, **additionalEmptyEntityDictionary)            
+            retData.append(emptyEntityDictionary)
              
         self.response.out.write(json.dumps(retData));
                                             
@@ -300,34 +267,29 @@ class EntityRequest(webapp2.RequestHandler):
         
         newEntity.put()
         entityKey['value'] = newEntity.key().id_or_name()
-        
-        ''' set new entity as the reference '''
+                
         referencedByJsonStr = self.request.get('referencedBy')
         if referencedByJsonStr:
             referencedBy = json.loads(referencedByJsonStr);
-            referenceModel = eval(referencedBy['referenceModel'])
+            referenceModelName = referencedBy['referenceModel']
+            referenceModel = eval(referenceModelName)
             referenceKey = json.loads(referencedBy['referenceKey']);
             referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
-            setattr(referenceEntity, modelName.lower(), newEntity)
-            referenceEntity.put()
+            
+            ''' set new entity as the reference '''
+            if hasattr(referenceEntity, modelName.lower()):
+                setattr(referenceEntity, modelName.lower(), newEntity)
+                referenceEntity.put()
+            
+            ''' set referenced entity as collection reference for the new entity '''
+            if hasattr(newEntity, referenceModelName.lower()):
+                setattr(newEntity, referenceModelName.lower(), referenceEntity)
+                newEntity.put()
             
         requestPayload['id'] = newEntity.key().id_or_name()
         requestPayload['key'] = json.dumps(entityKey)
         
         self.response.out.write(json.dumps(requestPayload))
-#        if entityKeyJsonData:
-#            keyObj = json.loads(entityKeyJsonData)
-#            entity = 
-#        if (model.keyType == Entity.KeyType.KEYNAME):
-#             
-#        requestPayload = json.loads(self.request.body)
-#        requestPayload['id'] = 1
-#        self.response.out.write(json.dumps(requestPayload))
-#        entity = EntityRequest.buildEntityFromRequest(model, self.request)
-#        entity.put() 
-
-        ''' get the rejference , create entity and set the referecne'''
-        
 
     def put(self):
         ''' get entity by it's key and value '''

@@ -62,6 +62,8 @@
       if (cfg.parent && !cfg.index)
         throw "this entity has a parent but child index is not specified" 
 
+      _.bindAll(this, 'attrsChange', 'setUrl', 'keyChange');
+
       this.modelName = cfg.name;
       this.key = cfg.key;
       this.parent =cfg.parent
@@ -78,21 +80,28 @@
       if (this.key.type == 'id')
         guessValue = -1;
 
-      this.key.value = this.key.value || guessValue;
-      // keyObj[this.key.type] = value;
+      this.key.value = this.key.value || guessValue;  
+      this.setUrl(this.key);
 
-      // build resource url for this entity
-      var keyJsonStr =  JSON.stringify( this.key );
+      this.bind('change:key', this.keyChange);    
+      this.bind('change', this.attrsChange);
+    },
 
-      this.keyUrl =  "model=" + this.modelName + "&key=" + keyJsonStr;
+    keyChange: function() {
+      this.setUrl(JSON.parse(this.get('key')));
+    },
+
+    setUrl: function(keyObj) {
+      if (!$.isPlainObject(keyObj))
+        throw "key object must be an instance of Object";
+
+      this.keyUrl =  "model=" + this.modelName + "&key=" +  JSON.stringify( keyObj );
+
       if ($(this.index).length) {
         this.keyUrl += "&index=" + this.index;
       }
 
-      this.url = '/entity' + "?" + this.keyUrl
-
-      _.bindAll(this, 'attrsChange');
-      this.bind('change', this.attrsChange);
+      this.url = '/entity' + "?" + this.keyUrl;
     },
 
     attrsChange: function() {
@@ -120,7 +129,7 @@
       }, this);
 
       // fetch entity collecions
-      var collectionList = JSON.parse(this.get('collections'));
+      var collectionList = JSON.parse(this.get('collections'));       
       _.each(collectionList, function(collectionModelName){
         if (! this.isNew()) {
           var collection = new EntityCollection({
@@ -232,19 +241,25 @@
     render: function() {
 
       // display view for each field
-      var fields = this.model.changedAttributes();
-      for (field in fields) {
-        var name = field;
-        var value = fields[name];
+      var fields = this.model.attributes;    
 
-        // render view for individule field
-        var newView = new EntityAttributeView({
-          name: name,
-          value: value, 
-          mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
-          model: this.model
-        })
-      }
+      _.each(fields, function(fieldValue,fieldName) {      
+        try {
+          // parsing null value
+          if (!fieldValue) throw "parsing null value";
+
+          // parsing non json value
+          JSON.parse(fieldValue);
+        }
+        catch(e){ // only render for those non json value fields          
+          var newView = new EntityAttributeView({
+            name: fieldName,
+            value: fieldValue, 
+            mode : this.model.isNew()? EditModes.NEW : EditModes.READ,      
+            model: this.model
+          });
+        }        
+      }, this);
 
       var entityContainer = getOrCreateContainer({          
           id: this.model.modelName + this.model.index,
