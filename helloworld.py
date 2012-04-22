@@ -182,25 +182,25 @@ class EntityCollectionRequest(webapp2.RequestHandler):
             if collectionEntities:                
                 for index, entity in enumerate(collectionEntities):
                     entityDictionary = Entity.dictionarizeEntity(model, entity)
-                    additionalParamsForEntity = {'model':model, 
-                                                 'entity':entity,
-                                                 'parent':parentName,
-                                                 'parentIndex':parentIndex,
-                                                 'index':index+1}
-                    
-                    Entity.addIdParamsForEntityDictionary(entityDictionary, **additionalParamsForEntity)
+#                    additionalParamsForEntity = {'model':model, 
+#                                                 'entity':entity,
+#                                                 'parent':parentName,
+#                                                 'parentIndex':parentIndex,
+#                                                 'index':index+1}
+#                    
+#                    Entity.addIdParamsForEntityDictionary(entityDictionary, **additionalParamsForEntity)
                     
                     retData.append(entityDictionary)
                     
             ''' add another empty record for continous input '''
-            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
-            additionalEmptyEntityDictionary = {'model':model,
-                                         'parent':parentName,
-                                         'parentIndex':parentIndex,
-                                         'index':0                                       
-                                         }
-            Entity.addIdParamsForEntityDictionary(emptyEntityDictionary, **additionalEmptyEntityDictionary)            
-            retData.append(emptyEntityDictionary)
+#            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
+#            additionalEmptyEntityDictionary = {'model':model,
+#                                         'parent':parentName,
+#                                         'parentIndex':parentIndex,
+#                                         'index':0                                       
+#                                         }
+#            Entity.addIdParamsForEntityDictionary(emptyEntityDictionary, **additionalEmptyEntityDictionary)            
+#            retData.append(emptyEntityDictionary)
              
         self.response.out.write(json.dumps(retData));
                                             

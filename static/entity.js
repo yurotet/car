@@ -160,18 +160,37 @@
     },
 
     parse: function(response) {
-      _.each($.makeArray(response), function(entityData){
+      // assuming this collection has been closed
+      var collectionClosed = true;
+
+      _.each($.makeArray(response), function(collectionItem) {
+        // reset negtive this collection colosing status if any 
+        // of its collectin item's closing status if false
+        collectionClosed = collectionItem.collectionClosed;
+
         var entity = new Entity( {
-            name : entityData.modelName,
-            key: entityData.key,
-            index: entityData.index,
-            parentIndex : entityData.parentIndex,
-            parent : entityData.parent         
+            name : collectionItem.modelName,
+            key: collectionItem.key,
+            index: collectionItem.index,
+            parentIndex : collectionItem.parentIndex,
+            parent : collectionItem.parent         
           });
 
           entity.set(entityData);
 
-      }, this);          
+      }, this);
+
+      if (collectionClosed) {      
+        // fetch an input colleciton item
+        var inputEntity = new Entity( {
+            name : this.itemModelName,
+            // TODO:: this is harde coded , WRONG!!!, entity my not 
+            // need to know the type, server side can fiture it out,
+            // refactor this later
+            key: {type: 'id'} 
+          }); 
+          inputEntity.fetch();
+      }      
     }
   });
   exports.EntityCollection = EntityCollection;
