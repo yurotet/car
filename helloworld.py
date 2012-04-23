@@ -231,8 +231,8 @@ class EntityRequest(webapp2.RequestHandler):
     def setEntityReferenceFromRequest(newEntity, referencedByJsonStr):
         if not isinstance(newEntity, db.Model):
             raise TypeError()
-        if not isinstance(referencedByJsonStr, str):
-            raise TypeError()        
+        if not referencedByJsonStr:
+            raise "referncedby model info is not specified"      
                     
         referencedBy = json.loads(referencedByJsonStr);
         
@@ -243,10 +243,9 @@ class EntityRequest(webapp2.RequestHandler):
         referenceModel = eval(referenceModelName)
         
         ''' get reference key '''
-        referenceKeyStr = referencedBy['referenceKey']
-        if not referenceKeyStr:
+        referenceKey = referencedBy['referenceKey']
+        if not referenceKey:
             raise "referenced key is not specified"                
-        referenceKey = json.loads(referenceKeyStr);
         
         ''' get referenced entity from datastore '''
         referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
@@ -272,8 +271,8 @@ class EntityRequest(webapp2.RequestHandler):
         
         ''' create new entity for presave models '''
         if not entity and hasattr(model, 'preSave') and getattr(model, 'preSave'):
-            keyType = jsonKey.type
-            keyValue = jsonKey.value
+            keyType = jsonKey['type']
+            keyValue = jsonKey['value']
             if keyType == Entity.KeyType.KEYNAME:
                 entity = model(key_name=keyValue)
             else:

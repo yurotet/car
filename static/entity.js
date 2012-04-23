@@ -169,6 +169,7 @@
       var collectionClosed = true;
 
       _.each($.makeArray(response), function(collectionItem) {
+      console.log(collectionItem);
         // reset negtive this collection colosing status if any 
         // of its collectin item's closing status if false
         collectionClosed = collectionItem.collectionClosed;
@@ -195,9 +196,16 @@
             key: {type: 'id'},
             parent: this.referencedBy.modelName,
             parentIndex: this.referencedBy.index,
-            index: 1
-          }); 
+            index: 1,        
+          });
 
+          // TODO:: referencedby url might need to be refactored
+          // to be constructed just inside entity itself, doesnt
+          // need to configure from outside 
+          var referenceKeyObj = {referenceModel: this.referencedBy.modelName,
+                                  referenceKey: this.referencedBy.key};
+
+          inputEntity.url += '&referencedBy=' + JSON.stringify(referenceKeyObj);
           inputEntity.fetch();
       }
     }
