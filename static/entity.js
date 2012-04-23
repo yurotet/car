@@ -66,9 +66,10 @@
 
       this.modelName = cfg.name;
       this.key = cfg.key;
-      this.parent =cfg.parent
+      this.parent = cfg.parent;
       this.index = cfg.index || '';
       this.parentIndex = cfg.parentIndex || '';
+      this.preSave = cfg.preSave;
 
       // resouce key for this entity is represented as
       //  a json string with key type and value    
@@ -99,6 +100,10 @@
 
       if ($(this.index).length) {
         this.keyUrl += "&index=" + this.index;
+      }
+
+      if(this.preSave) {
+        this.keyUrl += "&preSave=1"
       }
 
       this.url = '/entity' + "?" + this.keyUrl;
@@ -187,10 +192,14 @@
             // TODO:: this is harde coded , WRONG!!!, entity my not 
             // need to know the type, server side can fiture it out,
             // refactor this later
-            key: {type: 'id'} 
+            key: {type: 'id'},
+            parent: this.referencedBy.modelName,
+            parentIndex: this.referencedBy.index,
+            index: 1
           }); 
+
           inputEntity.fetch();
-      }      
+      }
     }
   });
   exports.EntityCollection = EntityCollection;

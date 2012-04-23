@@ -31,13 +31,12 @@ class Entity:
     def getEntityFromKeyJson(model, queryKey):   
         if not issubclass(model, db.Model):
             raise TypeError()
-        
         # based on the type of query key to determine
         # how to query the entity i.e. by id or by keyname  
         queryType = queryKey['type']
         queryValue = queryKey['value']
-                   
-        entity = getattr(model, 'get_by_' + queryType)(queryValue)
+                
+        entity = getattr(model, 'get_by_' + queryType)(queryValue)           
         
         return entity 
     
@@ -152,9 +151,13 @@ class Vechile(db.Model):
 class Invoice(db.Model):    
     vechile = db.ReferenceProperty(Vechile)
     labour = db.StringProperty()
-    notes = db.TextProperty()    
+    notes = db.TextProperty()
+    acceptNewItem = db.BooleanProperty(default=True)    
+    
     collectionModels = ['InvoiceItem']
-    keyType = Entity.KeyType.ID 
+    keyType = Entity.KeyType.ID
+    preSave = True
+    
         
 ''' invoice items are grouped by invoice key '''
 class InvoiceItem(db.Model):
@@ -224,70 +227,96 @@ class EntityRequest(webapp2.RequestHandler):
             
         return entity
             
-#    @staticmethod
-#    def buildEntityFromRequest(model, request):
-#        if not issubclass(model, db.Model):
-#            raise TypeError()
-#        if not isinstance(request, webapp2.Request):
-#            raise TypeError()
-#       
-#        instance = model()
-#        
-#        fields = Entity.getNoneRefereceProperties(model);    
-#        for field in fields:
-#            value = request.get(field)
-#            if value:
-#                setattr(instance, field, request.get(field))        
-#        
-#        return instance
-           
-    def get(self):        
+    @staticmethod
+    def setEntityReferenceFromRequest(newEntity, referencedByJsonStr):
+        if not isinstance(newEntity, db.Model):
+            raise TypeError()
+        if not isinstance(referencedByJsonStr, str):
+            raise TypeError()        
+                    
+        referencedBy = json.loads(referencedByJsonStr);
+        
+        ''' get reference model from request '''        
+        referenceModelName = referencedBy['referenceModel']
+        if not referenceModelName:
+            raise "referenced model name is not specified"
+        referenceModel = eval(referenceModelName)
+        
+        ''' get reference key '''
+        referenceKeyStr = referencedBy['referenceKey']
+        if not referenceKeyStr:
+            raise "referenced key is not specified"                
+        referenceKey = json.loads(referenceKeyStr);
+        
+        ''' get referenced entity from datastore '''
+        referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
+        
+        ''' set new entity as the reference '''
+        modelName = newEntity.__class__.__name__
+        if hasattr(referenceEntity, modelName.lower()):
+            setattr(referenceEntity, modelName.lower(), newEntity)
+            referenceEntity.put()
+        
+        ''' set referenced entity as collection reference for the new entity '''
+        if hasattr(newEntity, referenceModelName.lower()):
+            setattr(newEntity, referenceModelName.lower(), referenceEntity)
+            newEntity.put()
+               
+    def get(self):
+        ''' get model and key for the request entity '''
         model = eval(self.request.get('model')) 
-        jsonKey = json.loads(self.request.get('key'))      
-        entity = Entity.getEntityFromKeyJson(model, jsonKey) 
+        jsonKey = json.loads(self.request.get('key'))
+        
+        ''' load entity '''
+        entity = Entity.getEntityFromKeyJson(model, jsonKey)
+        
+        ''' create new entity for presave models '''
+        if not entity and hasattr(model, 'preSave') and getattr(model, 'preSave'):
+            keyType = jsonKey.type
+            keyValue = jsonKey.value
+            if keyType == Entity.KeyType.KEYNAME:
+                entity = model(key_name=keyValue)
+            else:
+                entity = model()
+            entity.put()
+            EntityRequest.setEntityReferenceFromRequest(entity, self.request.get('referencedBy'))            
+        
+        ''' output entity body '''
         outputDict = Entity.dictionarizeEntity(model, entity)
-                              
         self.response.out.write(json.dumps(outputDict))
         
         
     def post(self):
+        ''' get model '''
         modelName = self.request.get('model')
         model = eval(modelName)
+        
+        ''' get key '''
         keyJsonStr = self.request.get('key')          
         entityKey = json.loads(keyJsonStr);
         
+        ''' create and fill data into the new created entity '''
         if entityKey['type'] == Entity.KeyType.KEYNAME:
             newEntity = model(key_name=entityKey['value'])
         else:
             newEntity = model()  
-                          
         requestPayload = json.loads(self.request.body)      
         newEntity = EntityRequest.setEntityFromRequestPayload(newEntity, requestPayload)
-        
         newEntity.put()
+        
+        ''' set returned key value '''
         entityKey['value'] = newEntity.key().id_or_name()
                 
-        referencedByJsonStr = self.request.get('referencedBy')
-        if referencedByJsonStr:
-            referencedBy = json.loads(referencedByJsonStr);
-            referenceModelName = referencedBy['referenceModel']
-            referenceModel = eval(referenceModelName)
-            referenceKey = json.loads(referencedBy['referenceKey']);
-            referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
+        ''' set all references for the entity '''
+        referencedByStr = self.request.get('referencedBy')
+        if referencedByStr:
+            EntityRequest.setEntityReferenceFromRequest(newEntity,referencedByStr)       
             
-            ''' set new entity as the reference '''
-            if hasattr(referenceEntity, modelName.lower()):
-                setattr(referenceEntity, modelName.lower(), newEntity)
-                referenceEntity.put()
-            
-            ''' set referenced entity as collection reference for the new entity '''
-            if hasattr(newEntity, referenceModelName.lower()):
-                setattr(newEntity, referenceModelName.lower(), referenceEntity)
-                newEntity.put()
-            
+        ''' construct response key info '''
         requestPayload['id'] = newEntity.key().id_or_name()
         requestPayload['key'] = json.dumps(entityKey)
         
+        ''' output response '''
         self.response.out.write(json.dumps(requestPayload))
 
     def put(self):
