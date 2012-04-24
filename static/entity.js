@@ -94,7 +94,7 @@
 
     setUrl: function(keyObj) {
       if (!$.isPlainObject(keyObj))
-        throw "key object must be an instance of Object";
+        throw "key object must be an Object";
 
       this.keyUrl =  "model=" + this.modelName + "&key=" +  JSON.stringify( keyObj );
 
@@ -104,9 +104,24 @@
 
       if(this.preSave) {
         this.keyUrl += "&preSave=1"
-      }
+      }     
 
-      this.url = '/entity' + "?" + this.keyUrl;
+      this.url = '/entity' + "?" + this.keyUrl;      
+    },
+
+    setReferenceKey:function(referencedKeyObj) {
+      if(!$.isPlainObject(referencedKeyObj)) {
+        throw "referened key must be an object";        
+      }
+      
+      var referencedKeyStr = "referencedBy=" + JSON.stringify(referencedKeyObj);
+
+      if(this.url.match(/referencedBy/i)) { // replace key string
+        this.url.replace(/referencedBy=[^&]+/i, referencedKeyStr);
+      }
+      else {  // add key string
+        this.url += '&' + referencedKeyStr;
+      }
     },
 
     attrsChange: function() {
@@ -133,8 +148,9 @@
           }
       }, this);
 
-      // fetch entity collecions
-      var collectionList = JSON.parse(this.get('collections'));       
+      // fetch entity collecions and parse each item
+      var collectionList = JSON.parse(this.get('collections'));
+
       _.each(collectionList, function(collectionModelName){
         if (! this.isNew()) {
           var collection = new EntityCollection({
@@ -158,35 +174,28 @@
         throw "the entity that reference this collection is missing"
 
       this.itemModelName = cfg.itemModelName;
-      this.referencedBy = cfg.referencedBy; 
-      this.keyModel = this.referencedBy;
+      this.referencedBy = cfg.referencedBy;      
 
       this.url = "/entityCollection?itemModelName=" + this.itemModelName + "&" + this.referencedBy.keyUrl;
     },
 
     parse: function(response) {
-      // assuming this collection has been closed
-      var collectionClosed = true;
 
       _.each($.makeArray(response), function(collectionItem) {
-      console.log(collectionItem);
-        // reset negtive this collection colosing status if any 
-        // of its collectin item's closing status if false
-        collectionClosed = collectionItem.collectionClosed;
-
+             
         var entity = new Entity( {
             name : collectionItem.modelName,
             key: collectionItem.key,
             index: collectionItem.index,
             parentIndex : collectionItem.parentIndex,
-            parent : collectionItem.parent         
+            parent : collectionItem.parent
           });
 
-          entity.set(entityData);
+          entity.set(collectionItem);
 
       }, this);
-
-      if (collectionClosed) {      
+console.log(this.referencedBy);
+      if (this.acceptNewItem) {
         // fetch an input colleciton item
         var inputEntity = new Entity( {
             name : this.itemModelName,
@@ -205,7 +214,7 @@
           var referenceKeyObj = {referenceModel: this.referencedBy.modelName,
                                   referenceKey: this.referencedBy.key};
 
-          inputEntity.url += '&referencedBy=' + JSON.stringify(referenceKeyObj);
+          inputEntity.setReferenceKey(referenceKeyObj);          
           inputEntity.fetch();
       }
     }
@@ -268,7 +277,7 @@
 
         var referencedKeyObj = {referenceModel: this.model.parent,
                                 referenceKey: parentKeyJsonStr}
-        this.model.url += '&referencedBy=' + JSON.stringify(referencedKeyObj);
+        this.model.setReferenceKey(referencedKeyObj);
       }
 
       this.model.save(dataObj, {wait : true});
@@ -279,7 +288,7 @@
       includedDisplayFields = ['key'];
 
       // fields that dont need to display
-      excludeDisplayFields = ['id','model','name','parent','parentIndex','index','modelName'];
+      excludeDisplayFields = ['id', 'model', 'name', 'parent', 'parentIndex', 'index', 'modelName', 'openCollections'];
 
       // display view for each field
       var fields = this.model.attributes;    

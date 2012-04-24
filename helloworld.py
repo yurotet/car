@@ -25,12 +25,16 @@ class Entity:
         if not issubclass(model, db.Model):
             raise TypeError()
         
-        return [k for k, v in model.properties().items() if not isinstance(v, db.ReferenceProperty)]
+        retSet = [k for k, v in model.properties().items() if not isinstance(v, db.ReferenceProperty)]        
+        return retSet
     
     @staticmethod
-    def getEntityFromKeyJson(model, queryKey):   
+    def getEntityFromKey(model, queryKey):
         if not issubclass(model, db.Model):
             raise TypeError()
+        if not queryKey:
+            raise "query key is not specified"
+        
         # based on the type of query key to determine
         # how to query the entity i.e. by id or by keyname  
         queryType = queryKey['type']
@@ -43,7 +47,7 @@ class Entity:
     @staticmethod
     def dictionarizeEntity(model, entity):
         ''' construct entity's none reference property list '''
-        fields = Entity.getNoneRefereceProperties(model)        
+        fields = Entity.getNoneRefereceProperties(model)      
         if entity:
             retDict = dict((field, getattr(entity,field)) for field in fields)
             retDict['id'] = entity.key().id_or_name()        
@@ -70,11 +74,11 @@ class Entity:
                                       'keyValue' : referenceModelKeyValue})                         
         retDict['references'] = json.dumps(referenceList)
                  
-        ''' construct a collection list '''
-        if(hasattr(model, 'collectionModels')):
-            retDict['collections'] = json.dumps(model.collectionModels);
-        else:
-            retDict['collections'] = json.dumps([])
+#        ''' construct a collection list '''
+#        if(hasattr(model, 'collectionModels')):
+#            retDict['collections'] = json.dumps(model.collectionModels);
+#        else:
+#            retDict['collections'] = json.dumps([])
             
         return retDict
     
@@ -87,9 +91,9 @@ class Entity:
         - index
      '''
     @staticmethod        
-    def addIdParamsForEntityDictionary(entityDictionary, **args):
+    def setEntityReferences(entityDictionary, **args):
         if not entityDictionary:
-            raise "entity dictonary is missing"
+            raise "entity dictionary is missing"
             
         model = args['model']
         entity = args['entity'] if args.has_key('entity') else None
@@ -140,20 +144,20 @@ class Vechile(db.Model):
     turbo = db.StringProperty()
     color = db.StringProperty()
     customer = db.ReferenceProperty(Customer)
-    collectionModels = ['Invoice']
+    openCollections = db.StringListProperty(default=['Invoice'])    
+    collectionModels = ['Invoice']    
     referenceVars = ['customer']
     keyType = Entity.KeyType.KEYNAME
 
 ''' invoice links to customer, vechile and invoice items.
     use refereceProperty back reference to check invoice 
     history of a particular vechile 
-    invice key is to group invoice items '''    
+    invoice key is to group invoice items '''    
 class Invoice(db.Model):    
     vechile = db.ReferenceProperty(Vechile)
     labour = db.StringProperty()
     notes = db.TextProperty()
-    acceptNewItem = db.BooleanProperty(default=True)    
-    
+    openCollections = db.StringListProperty(default=['InvoiceItem'])
     collectionModels = ['InvoiceItem']
     keyType = Entity.KeyType.ID
     preSave = True
@@ -173,9 +177,9 @@ class EntityCollectionRequest(webapp2.RequestHandler):
         retData = []     
         parentName = self.request.get('model')
         parentIndex = self.request.get('index')
-        jsonKey = json.loads(self.request.get('key'))
+        key = json.loads(self.request.get('key'))
         
-        entity = Entity.getEntityFromKeyJson(eval(parentName), jsonKey)         
+        entity = Entity.getEntityFromKey(eval(parentName), key)         
        
         if entity:
             itemModelName = self.request.get('itemModelName')  
@@ -185,17 +189,17 @@ class EntityCollectionRequest(webapp2.RequestHandler):
             if collectionEntities:                
                 for index, entity in enumerate(collectionEntities):
                     entityDictionary = Entity.dictionarizeEntity(model, entity)
-#                    additionalParamsForEntity = {'model':model, 
-#                                                 'entity':entity,
-#                                                 'parent':parentName,
-#                                                 'parentIndex':parentIndex,
-#                                                 'index':index+1}
-#                    
-#                    Entity.addIdParamsForEntityDictionary(entityDictionary, **additionalParamsForEntity)
+                    entityReferences = {'model':model, 
+                                         'entity':entity,
+                                         'parent':parentName,
+                                         'parentIndex':parentIndex,
+                                         'index':index+1}
+                    
+                    Entity.setEntityReferences(entityDictionary, **entityReferences)
                     
                     retData.append(entityDictionary)
                     
-            ''' add another empty record for continous input '''
+#            ''' add another empty record for continous input '''
 #            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
 #            additionalEmptyEntityDictionary = {'model':model,
 #                                         'parent':parentName,
@@ -210,17 +214,17 @@ class EntityCollectionRequest(webapp2.RequestHandler):
 
 ''' resouce: /entity?model=Customer&id=12 '''
 class EntityRequest(webapp2.RequestHandler):
-    @staticmethod
-    def getDictFromParams(request, excludeKeys):
-        if not isinstance(request, webapp2.Request):
-            raise TypeError()
-        if not isinstance(excludeKeys, list):
-            raise TypeError()
-        
-        return dict((k, v) for k, v in request.GET.items() if not k in excludeKeys) 
+#    @staticmethod
+#    def getDictFromParams(request, excludeKeys):
+#        if not isinstance(request, webapp2.Request):
+#            raise TypeError()
+#        if not isinstance(excludeKeys, list):
+#            raise TypeError()
+#        
+#        return dict((k, v) for k, v in request.GET.items() if not k in excludeKeys) 
     
     @staticmethod
-    def setEntityFromRequestPayload(entity, requestPayload):
+    def fillEntityWithRequestPayload(entity, requestPayload):
         fields = Entity.getNoneRefereceProperties(entity.__class__)
         for field in fields:
             setattr(entity,field,requestPayload[field]) 
@@ -248,7 +252,8 @@ class EntityRequest(webapp2.RequestHandler):
             raise "referenced key is not specified"                
         
         ''' get referenced entity from datastore '''
-        referenceEntity = Entity.getEntityFromKeyJson(referenceModel, referenceKey)
+        logging.info(referenceKey.__class__.__name__)
+        referenceEntity = Entity.getEntityFromKey(referenceModel, referenceKey)
         
         ''' set new entity as the reference '''
         modelName = newEntity.__class__.__name__
@@ -264,15 +269,15 @@ class EntityRequest(webapp2.RequestHandler):
     def get(self):
         ''' get model and key for the request entity '''
         model = eval(self.request.get('model')) 
-        jsonKey = json.loads(self.request.get('key'))
+        key = json.loads(self.request.get('key'))
         
         ''' load entity '''
-        entity = Entity.getEntityFromKeyJson(model, jsonKey)
+        entity = Entity.getEntityFromKey(model, key)
         
         ''' create new entity for presave models '''
         if not entity and hasattr(model, 'preSave') and getattr(model, 'preSave'):
-            keyType = jsonKey['type']
-            keyValue = jsonKey['value']
+            keyType = key['type']
+            keyValue = key['value']
             if keyType == Entity.KeyType.KEYNAME:
                 entity = model(key_name=keyValue)
             else:
@@ -300,7 +305,7 @@ class EntityRequest(webapp2.RequestHandler):
         else:
             newEntity = model()  
         requestPayload = json.loads(self.request.body)      
-        newEntity = EntityRequest.setEntityFromRequestPayload(newEntity, requestPayload)
+        newEntity = EntityRequest.fillEntityWithRequestPayload(newEntity, requestPayload)
         newEntity.put()
         
         ''' set returned key value '''
@@ -321,12 +326,12 @@ class EntityRequest(webapp2.RequestHandler):
     def put(self):
         ''' get entity by it's key and value '''
         model = eval(self.request.get('model'))
-        jsonkey = json.loads(self.request.get('key'))
-        entity = Entity.getEntityFromKeyJson(model, jsonkey)
+        key = json.loads(self.request.get('key'))
+        entity = Entity.getEntityFromKey(model, key)
         
         ''' update entity with request payload ''' 
         requestPayload = json.loads(self.request.body)     
-        entity = EntityRequest.setEntityFromRequestPayload(entity, requestPayload)                
+        entity = EntityRequest.fillEntityWithRequestPayload(entity, requestPayload)                
         entity.put()
 
 ''' application entry point '''
