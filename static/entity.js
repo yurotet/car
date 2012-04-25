@@ -59,16 +59,16 @@
         throw "key for the entity is missing"  
       if (!cfg.key.type)
         throw "type of query for entity is missing"
-      if (cfg.parent && !cfg.index)
-        throw "this entity has a parent but child index is not specified" 
+   //   if (cfg.parent && !cfg.index)
+   //     throw "this entity has a parent but child index is not specified" 
 
-      _.bindAll(this, 'attrsChange', 'setUrl', 'keyChange');
+      _.bindAll(this, 'attrsChange', 'setUrl', 'keyChange', 'setReferencedBy', 'addOrReplaceUrlParam');
 
       this.modelName = cfg.name;
       this.key = cfg.key;
-      this.parent = cfg.parent;
-      this.index = cfg.index || '';
-      this.parentIndex = cfg.parentIndex || '';
+     /// this.parent = cfg.parent;
+     // this.index = cfg.index || '';
+     //this.parentIndex = cfg.parentIndex || '';
       this.preSave = cfg.preSave;
 
       // resouce key for this entity is represented as
@@ -89,7 +89,7 @@
     },
 
     keyChange: function() {
-      this.setUrl(JSON.parse(this.get('key')));
+      this.setUrl(this.get('key'));
     },
 
     setUrl: function(keyObj) {
@@ -98,9 +98,9 @@
 
       this.keyUrl =  "model=" + this.modelName + "&key=" +  JSON.stringify( keyObj );
 
-      if ($(this.index).length) {
-        this.keyUrl += "&index=" + this.index;
-      }
+   //  if ($(this.index).length) {
+    //    this.keyUrl += "&index=" + this.index;
+    //  }
 
       if(this.preSave) {
         this.keyUrl += "&preSave=1"
@@ -109,49 +109,58 @@
       this.url = '/entity' + "?" + this.keyUrl;      
     },
 
-    setReferenceKey:function(referencedKeyObj) {
-      if(!$.isPlainObject(referencedKeyObj)) {
-        throw "referened key must be an object";        
-      }
-      
-      var referencedKeyStr = "referencedBy=" + JSON.stringify(referencedKeyObj);
+    addOrReplaceUrlParam: function(key, value) {
+      var keyReg = new RegExp(key + "=", "i");
+      var keyStr = key + "=" + value;
 
-      if(this.url.match(/referencedBy/i)) { // replace key string
-        this.url.replace(/referencedBy=[^&]+/i, referencedKeyStr);
+      if(this.url.match(keyReg)) {
+        var replaceReg = new RegExp(key + "=[^&]+", "i");
+        this.url = this.url.replace(replaceReg, keyStr);
       }
-      else {  // add key string
-        this.url += '&' + referencedKeyStr;
+      else {
+        this.url = this.url + "&" + keyStr;
       }
+    },
+
+    setReferencedBy:function(referencedByEntityMeta) {
+      if (!$.isPlainObject(referencedByEntityMeta.key))
+        throw "refernced entitny key is wrong type or not specified";
+      if (!$(referencedByEntityMeta.modelName).length
+        throw "model name for the referecedby entity is not specified";
+
+      this.referencedByEntityMeta = referencedByEntityMeta;
+      this.addOrReplaceUrlParam('referencedBy', JSON.stringify(referencedByEntityMeta.key));      
     },
 
     attrsChange: function() {
       // create a new view if any entity attributes changed
       var newView = new EntityView({model:this});
    
-      // fetch referenced entities
-      var referenceList = JSON.parse(this.get('references'));
-
-      _.each(referenceList, function(referenceMetaData, referenceIndex) {
-          var modelName = referenceMetaData.modelName;
-          var referenceKeyType = referenceMetaData.keyType;
-          var referenceKeyValue = referenceMetaData.keyValue;
+      // fetch referenced entities      
+      _.each(this.get('references'), function(referenceMeta, referenceIndex) {
+          var modelName = referenceMeta.modelName;
+          var referenceKeyType = referenceMeta.key.type;
+          var referenceKeyValue = referenceMeta.key.value;
 
           if (! this.isNew()) {
+
             var referencedEntity = new Entity({
               name : modelName,
-              key: { type: referenceKeyType, value: referenceKeyValue },
-              parent: this.modelName,
-              parentIndex: this.index,
-              index: referenceIndex + 1
+              key: { type: referenceKeyType, value: referenceKeyValue }           
             });
+
+            var referencedByEntityMeta = {
+              key: this.key,
+              modelName : this.modelName,
+              index: referenceIndex + 1
+            };            
+            referencedEntity.setReferencedBy(referencedByEntityMeta);
             referencedEntity.fetch();
           }
       }, this);
 
-      // fetch entity collecions and parse each item
-      var collectionList = JSON.parse(this.get('collections'));
-
-      _.each(collectionList, function(collectionModelName){
+      // fetch entity collecions and parse each item      
+      _.each(this.get('collections'), function(collectionModelName){
         if (! this.isNew()) {
           var collection = new EntityCollection({
             itemModelName:collectionModelName,
@@ -181,42 +190,58 @@
 
     parse: function(response) {
 
-      _.each($.makeArray(response), function(collectionItem) {
-             
+      _.each($.makeArray(response), function(collectionItem) {             
         var entity = new Entity( {
-            name : collectionItem.modelName,
-            key: collectionItem.key,
-            index: collectionItem.index,
-            parentIndex : collectionItem.parentIndex,
-            parent : collectionItem.parent
+            name : this.itemModelName,
+            key: collectionItem.key
+           //index: collectionItem.index,
+           // parentIndex : collectionItem.parentIndex,
+           // parent : collectionItem.parent
           });
 
+          var referencedByEntityMeta = {
+            key: this.referencedBy.key,
+            modelName: this.referencedBy.name,
+            index: referencedBy.index
+          };
+
+          entity.setReferencedBy(referencedByEntityMeta);
           entity.set(collectionItem);
 
       }, this);
-console.log(this.referencedBy);
-      if (this.acceptNewItem) {
-        // fetch an input colleciton item
-        var inputEntity = new Entity( {
-            name : this.itemModelName,
-            // TODO:: this is harde coded , WRONG!!!, entity my not 
-            // need to know the type, server side can fiture it out,
-            // refactor this later
-            key: {type: 'id'},
-            parent: this.referencedBy.modelName,
-            parentIndex: this.referencedBy.index,
-            index: 1,        
-          });
 
-          // TODO:: referencedby url might need to be refactored
-          // to be constructed just inside entity itself, doesnt
-          // need to configure from outside 
-          var referenceKeyObj = {referenceModel: this.referencedBy.modelName,
-                                  referenceKey: this.referencedBy.key};
+      // if the referenced entity allow collection items to be continuously created, then
+      // besides fetching all already stored collection items, an extra input item needs 
+      // to be fetched.
+      //var openCollecitonsOfReferencedBy = this.referencedBy.get('openCollections');  
+     // if (openCollecitonsOfReferencedBy) {
+      //    var openToNewItems =  _.find(openCollecitonsOfReferencedBy, 
+       //                                 function(e) { return e == this.itemModelName}, this);        
+      //    if (openToNewItems) {
+       //     // fetch an input colleciton item
+       //     var inputEntity = new Entity( {
+        //        name : this.itemModelName,
+                // TODO:: this is harde coded , WRONG!!!, entity my not 
+                // need to know the type, server side can fiture it out,
+                // refactor this later
+       //         key: {type: 'id'},
+       //         parent: this.referencedBy.modelName,
+        //        parentIndex: this.referencedBy.index,
+         //      index: 1,        
+         //   });
 
-          inputEntity.setReferenceKey(referenceKeyObj);          
-          inputEntity.fetch();
-      }
+            // TODO:: referencedby url might need to be refactored
+            // to be constructed just inside entity itself, doesnt
+            // need to configure from outside 
+          //  var referenceKeyObj = {referenceModel: this.referencedBy.modelName,
+           //                         referenceKey: this.referencedBy.key};
+
+        //    inputEntity.setReferenceKey(referenceKeyObj);          
+            //inputEntity.fetch();
+
+         //   console.log(this.referencedBy);
+       //}
+      //}     
     }
   });
   exports.EntityCollection = EntityCollection;
@@ -267,7 +292,8 @@ console.log(this.referencedBy);
       });          
 
       // add referncedby entity to query url to set the relationship
-      var parentkeyContainer = $('#' + this.model.parent + this.model.parentIndex + '-key-container');
+      var referencedByEntityMeta = this.model.referencedByEntityMeta;
+      var parentkeyContainer = $('#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-key-container');
       
       if(parentkeyContainer.length) {                
        
@@ -275,7 +301,7 @@ console.log(this.referencedBy);
         if (!parentKeyJsonStr) 
           throw ("parent key json must not be empty if entity's parent exits") 
 
-        var referencedKeyObj = {referenceModel: this.model.parent,
+        var referencedKeyObj = {referenceModel: this.model.referencedByEntityMeta.modelName,
                                 referenceKey: parentKeyJsonStr}
         this.model.setReferenceKey(referencedKeyObj);
       }
@@ -326,10 +352,11 @@ console.log(this.referencedBy);
         }        
       }, this);
 
+      var referencedByEntityMeta = this.model.referencedByEntityMeta;
       var entityContainer = getOrCreateContainer({          
           id: this.model.modelName + this.model.index,
           type: 'entity',
-          rootSelector: this.model.parent? '#' + this.model.parent + this.model.parentIndex + '-container' : null
+          rootSelector: referencedByEntityMeta.modelName? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
         });
 
       
@@ -487,11 +514,14 @@ console.log(this.referencedBy);
       fieldContainer.empty();      
       fieldContainer.append($(fieldHtml));
 
+      
+      var referencedByEntityMeta = this.model.referencedByEntityMeta;
+
       // append field container to entity container
       var entityContainer = getOrCreateContainer({
         id: this.model.modelName + this.model.index,         
         type: 'entity',
-        rootSelector: this.model.parent? '#' + this.model.parent + this.model.parentIndex + '-container' : null
+        rootSelector: referencedByEntityMeta.modelName? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
       });
         
       if ( ! entityContainer.has(fieldContainer).length ) {

@@ -45,15 +45,25 @@ class Entity:
         return entity 
     
     @staticmethod
-    def dictionarizeEntity(model, entity):
+    def serializeEntity(model, entity):
         ''' construct entity's none reference property list '''
-        fields = Entity.getNoneRefereceProperties(model)      
+        fields = Entity.getNoneRefereceProperties(model)    
         if entity:
             retDict = dict((field, getattr(entity,field)) for field in fields)
             retDict['id'] = entity.key().id_or_name()        
         else:
-            retDict = dict((field, None) for field in fields)    
-        
+#            if(isinstance(getattr(model, field), db.StringListProperty)):
+#                defaultValue = []            h
+#            else:
+#                defaultValue = None
+            retDict = {}
+            for field in fields:
+                if(isinstance(getattr(model, field), db.StringListProperty)):
+                    defaultValue = []                    
+                else:
+                    defaultValue = None                    
+                retDict[field] = defaultValue    
+         
         ''' construct a reference property list '''
         referenceList = [] 
         if(hasattr(model,'referenceVars')): 
@@ -70,15 +80,16 @@ class Entity:
                         referenceModelKeyValue = referenceEntity.key().id_or_name()
                 
                 referenceList.append({'modelName' : referenceModelName,
-                                      'keyType' : referenceModelKeyType,
-                                      'keyValue' : referenceModelKeyValue})                         
-        retDict['references'] = json.dumps(referenceList)
+                                      'key' : {'type':referenceModelKeyType, 
+                                               'value' : referenceModelKeyValue}
+                                      })                         
+        retDict['references'] = referenceList
                  
-#        ''' construct a collection list '''
-#        if(hasattr(model, 'collectionModels')):
-#            retDict['collections'] = json.dumps(model.collectionModels);
-#        else:
-#            retDict['collections'] = json.dumps([])
+        ''' construct a collection list '''
+        if(hasattr(model, 'collectionModels')):
+            retDict['collections'] = model.collectionModels;
+        else:
+            retDict['collections'] = []
             
         return retDict
     
@@ -188,12 +199,12 @@ class EntityCollectionRequest(webapp2.RequestHandler):
             
             if collectionEntities:                
                 for index, entity in enumerate(collectionEntities):
-                    entityDictionary = Entity.dictionarizeEntity(model, entity)
+                    entityDictionary = Entity.serializeEntity(model, entity)
                     entityReferences = {'model':model, 
-                                         'entity':entity,
-                                         'parent':parentName,
-                                         'parentIndex':parentIndex,
-                                         'index':index+1}
+                                        'entity':entity,
+                                        'parent':parentName,
+                                        'parentIndex':parentIndex,
+                                        'index':index+1}
                     
                     Entity.setEntityReferences(entityDictionary, **entityReferences)
                     
@@ -248,11 +259,15 @@ class EntityRequest(webapp2.RequestHandler):
         
         ''' get reference key '''
         referenceKey = referencedBy['referenceKey']
+        if (isinstance(referenceKey, unicode)):
+            referenceKey = json.loads(referenceKey)
+        
         if not referenceKey:
             raise "referenced key is not specified"                
         
-        ''' get referenced entity from datastore '''
+        ''' get referenced entity from datastore '''   
         logging.info(referenceKey.__class__.__name__)
+        logging.info(referenceKey)
         referenceEntity = Entity.getEntityFromKey(referenceModel, referenceKey)
         
         ''' set new entity as the reference '''
@@ -286,7 +301,7 @@ class EntityRequest(webapp2.RequestHandler):
             EntityRequest.setEntityReferenceFromRequest(entity, self.request.get('referencedBy'))            
         
         ''' output entity body '''
-        outputDict = Entity.dictionarizeEntity(model, entity)
+        outputDict = Entity.serializeEntity(model, entity)
         self.response.out.write(json.dumps(outputDict))
         
         
@@ -303,8 +318,15 @@ class EntityRequest(webapp2.RequestHandler):
         if entityKey['type'] == Entity.KeyType.KEYNAME:
             newEntity = model(key_name=entityKey['value'])
         else:
-            newEntity = model()  
-        requestPayload = json.loads(self.request.body)      
+            newEntity = model()
+        
+        requestPayload = json.loads(self.request.body)
+        
+        ''' set default open collections for the entity ''' 
+        if hasattr(newEntity, 'openCollections'):
+            requestPayload['openCollections'] = newEntity.openCollections
+         
+        ''' fill the new entity with posted data '''     
         newEntity = EntityRequest.fillEntityWithRequestPayload(newEntity, requestPayload)
         newEntity.put()
         
@@ -317,8 +339,8 @@ class EntityRequest(webapp2.RequestHandler):
             EntityRequest.setEntityReferenceFromRequest(newEntity,referencedByStr)       
             
         ''' construct response key info '''
-        requestPayload['id'] = newEntity.key().id_or_name()
-        requestPayload['key'] = json.dumps(entityKey)
+        requestPayload['id'] = entityKey['value']
+        requestPayload['key'] = entityKey
         
         ''' output response '''
         self.response.out.write(json.dumps(requestPayload))
@@ -361,8 +383,7 @@ class Data(webapp2.RequestHandler):
         
 ''' applicaiton configrations '''        
 app = webapp2.WSGIApplication([('/', Main),
-                               ('/entity', EntityRequest), 
-                               ('/data',Data),
+                               ('/entity', EntityRequest),
                                ('/entityCollection',EntityCollectionRequest)],
                               debug=True)
 def main():
