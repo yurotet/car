@@ -49,20 +49,18 @@ class Entity:
         ''' construct entity's none reference property list '''
         fields = Entity.getNoneRefereceProperties(model)    
         if entity:
-            retDict = dict((field, getattr(entity,field)) for field in fields)
-            retDict['id'] = entity.key().id_or_name()        
+            serializedEntity = dict((field, getattr(entity,field)) for field in fields)
+            keyValue = entity.key().id_or_name()   
+            serializedEntity['id'] = keyValue           
+            serializedEntity['key'] = {'type':model.keyType, 'value': keyValue}       
         else:
-#            if(isinstance(getattr(model, field), db.StringListProperty)):
-#                defaultValue = []            h
-#            else:
-#                defaultValue = None
-            retDict = {}
+            serializedEntity = {}
             for field in fields:
                 if(isinstance(getattr(model, field), db.StringListProperty)):
                     defaultValue = []                    
                 else:
                     defaultValue = None                    
-                retDict[field] = defaultValue    
+                serializedEntity[field] = defaultValue    
          
         ''' construct a reference property list '''
         referenceList = [] 
@@ -83,46 +81,15 @@ class Entity:
                                       'key' : {'type':referenceModelKeyType, 
                                                'value' : referenceModelKeyValue}
                                       })                         
-        retDict['references'] = referenceList
+        serializedEntity['references'] = referenceList
                  
         ''' construct a collection list '''
         if(hasattr(model, 'collectionModels')):
-            retDict['collections'] = model.collectionModels;
+            serializedEntity['collections'] = model.collectionModels;
         else:
-            retDict['collections'] = []
-            
-        return retDict
-    
-    ''' acceptable params:
-        - entityDictionary
-        - model
-        - entity
-        - parrentName
-        - parentIndex
-        - index
-     '''
-#    @staticmethod        
-#    def setEntityReferences(entityDictionary, **args):
-#        if not entityDictionary:
-#            raise "entity dictionary is missing"
-#            
-#        model = args['model']
-#        entity = args['entity'] if args.has_key('entity') else None
-#        
-#        if not model or not issubclass(model, db.Model):
-#            raise TypeError()            
-#        if not entityDictionary:
-#            raise "entity dictionary is missing"
-#        
-#        modelName = model.__name__
-#        modelKeyType = model.keyType
-#        modelKeyValue = entity.key().id_or_name() if entity else None
-#        
-#        entityDictionary['modelName'] = modelName
-#        entityDictionary['key'] = {'type':modelKeyType, 'value':modelKeyValue}
-#        entityDictionary['parent'] = args['parent'] if args.has_key('parent') else None
-#        entityDictionary['parentIndex'] = args['parentIndex'] if args.has_key('parentIndex') else None
-#        entityDictionary['index'] = args['index'] + 1 if args.has_key('index') else None
+            serializedEntity['collections'] = []
+                   
+        return serializedEntity
         
     @staticmethod
     def setEntityReference(newEntity, referenceModelName, referenceKey):
@@ -224,42 +191,13 @@ class EntityCollectionRequest(webapp2.RequestHandler):
             model = eval(itemModelName)
             
             if collectionEntities:               
-                for index, entity in enumerate(collectionEntities):
-                    serializedEntity = Entity.serializeEntity(model, entity)
-#                    serializedEntity = {'model':model, 
-#                                        'entity':entity,
-#                                        'parent':parentName,
-#                                        'parentIndex':parentIndex,
-#                                        'index':index+1}
-#                    
-#                    Entity.setEntityReferences(entityDictionary, **entityReferences)
-#                    
+                for entity in enumerate(collectionEntities):
+                    serializedEntity = Entity.serializeEntity(model, entity)                    
                     retData.append(serializedEntity)
-                    
-#            ''' add another empty record for continous input '''
-#            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
-#            additionalEmptyEntityDictionary = {'model':model,
-#                                         'parent':parentName,
-#                                         'parentIndex':parentIndex,
-#                                         'index':0                                       
-#                                         }
-#            Entity.addIdParamsForEntityDictionary(emptyEntityDictionary, **additionalEmptyEntityDictionary)            
-#            retData.append(emptyEntityDictionary)
              
         self.response.out.write(json.dumps(retData));
                                             
-
-''' resouce: /entity?model=Customer&id=12 '''
-class EntityRequest(webapp2.RequestHandler):
-#    @staticmethod
-#    def getDictFromParams(request, excludeKeys):
-#        if not isinstance(request, webapp2.Request):
-#            raise TypeError()
-#        if not isinstance(excludeKeys, list):
-#            raise TypeError()
-#        
-#        return dict((k, v) for k, v in request.GET.items() if not k in excludeKeys) 
-    
+class EntityRequest(webapp2.RequestHandler):    
     @staticmethod
     def fillEntityWithRequestPayload(entity, requestPayload):
         fields = Entity.getNoneRefereceProperties(entity.__class__)
@@ -267,8 +205,7 @@ class EntityRequest(webapp2.RequestHandler):
             setattr(entity,field,requestPayload[field]) 
             
         return entity
-                
-               
+                               
     def get(self):
         ''' get model and key for the request entity '''
         model = eval(self.request.get('model')) 
@@ -295,8 +232,7 @@ class EntityRequest(webapp2.RequestHandler):
         
         ''' output entity body '''
         outputDict = Entity.serializeEntity(model, entity)
-        self.response.out.write(json.dumps(outputDict))
-        
+        self.response.out.write(json.dumps(outputDict))        
         
     def post(self):
         ''' get model '''

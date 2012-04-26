@@ -193,10 +193,11 @@
 
     parse: function(response) {
 
-      _.each($.makeArray(response), function(collectionItem) {             
+      _.each($.makeArray(response), function(collectionItem, itemIndex) {             
         var entity = new Entity( {
             name : this.itemModelName,
-            key: collectionItem.key
+            key: collectionItem.key, 
+            index: itemIndex           
            //index: collectionItem.index,
            // parentIndex : collectionItem.parentIndex,
            // parent : collectionItem.parent
@@ -216,35 +217,34 @@
       // if the referenced entity allow collection items to be continuously created, then
       // besides fetching all already stored collection items, an extra input item needs 
       // to be fetched.
-      //var openCollecitonsOfReferencedBy = this.referencedBy.get('openCollections');  
-     // if (openCollecitonsOfReferencedBy) {
-      //    var openToNewItems =  _.find(openCollecitonsOfReferencedBy, 
-       //                                 function(e) { return e == this.itemModelName}, this);        
-      //    if (openToNewItems) {
-       //     // fetch an input colleciton item
-       //     var inputEntity = new Entity( {
-        //        name : this.itemModelName,
+      var openCollecitonsOfReferencedBy = this.referencedBy.get('openCollections');  
+
+      if (openCollecitonsOfReferencedBy) {
+          var openToNewItems =  _.find(openCollecitonsOfReferencedBy, function(e) { return e == this.itemModelName}, this);        
+          if (openToNewItems) {
+            // fetch an input colleciton item
+            var inputEntity = new Entity( {
+                name : this.itemModelName,
                 // TODO:: this is harde coded , WRONG!!!, entity my not 
                 // need to know the type, server side can fiture it out,
                 // refactor this later
-       //         key: {type: 'id'},
+                key: {type: 'id'},
+                index: 'new'
        //         parent: this.referencedBy.modelName,
         //        parentIndex: this.referencedBy.index,
-         //      index: 1,        
-         //   });
+         //      index: 0,        
+            });
 
-            // TODO:: referencedby url might need to be refactored
-            // to be constructed just inside entity itself, doesnt
-            // need to configure from outside 
-          //  var referenceKeyObj = {referenceModel: this.referencedBy.modelName,
-           //                         referenceKey: this.referencedBy.key};
+            var referencedByEntityMeta = {
+              key: this.referencedBy.key,
+              modelName: this.referencedBy.modelName,
+              index: this.referencedBy.index
+            };
 
-        //    inputEntity.setReferenceKey(referenceKeyObj);          
-            //inputEntity.fetch();
-
-         //   console.log(this.referencedBy);
-       //}
-      //}     
+            inputEntity.setReferencedBy(referencedByEntityMeta);
+            inputEntity.fetch();
+          }
+        }                
     }
   });
   exports.EntityCollection = EntityCollection;
@@ -381,7 +381,21 @@
           btnText : 'Save this ' + this.model.modelName
         }));
 
-        entityContainer.append(saveBtnEl);      
+        entityContainer.append(saveBtnEl); 
+
+        if (this.model.referencedByEntityMeta && this.model.referencedByEntityMeta.index != '') {          
+          var saveReferencedByEl = $(_.template($("#tpl-link-btn").html(),{
+            btnType : Buttons.SAVE,
+            modelType: 'referencedBy',
+            btnText : 'Save this ' + this.model.referencedByEntityMeta.modelName
+          }));
+
+          saveReferencedByEl.bind('click', function () {
+            console.log("fddsfdsf");
+          });
+
+          entityContainer.append(saveReferencedByEl);
+        }  
       }
 
       else if (!this.model.isNew() && hasSaveLinkButton) {
