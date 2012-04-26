@@ -101,28 +101,53 @@ class Entity:
         - parentIndex
         - index
      '''
-    @staticmethod        
-    def setEntityReferences(entityDictionary, **args):
-        if not entityDictionary:
-            raise "entity dictionary is missing"
-            
-        model = args['model']
-        entity = args['entity'] if args.has_key('entity') else None
+#    @staticmethod        
+#    def setEntityReferences(entityDictionary, **args):
+#        if not entityDictionary:
+#            raise "entity dictionary is missing"
+#            
+#        model = args['model']
+#        entity = args['entity'] if args.has_key('entity') else None
+#        
+#        if not model or not issubclass(model, db.Model):
+#            raise TypeError()            
+#        if not entityDictionary:
+#            raise "entity dictionary is missing"
+#        
+#        modelName = model.__name__
+#        modelKeyType = model.keyType
+#        modelKeyValue = entity.key().id_or_name() if entity else None
+#        
+#        entityDictionary['modelName'] = modelName
+#        entityDictionary['key'] = {'type':modelKeyType, 'value':modelKeyValue}
+#        entityDictionary['parent'] = args['parent'] if args.has_key('parent') else None
+#        entityDictionary['parentIndex'] = args['parentIndex'] if args.has_key('parentIndex') else None
+#        entityDictionary['index'] = args['index'] + 1 if args.has_key('index') else None
         
-        if not model or not issubclass(model, db.Model):
-            raise TypeError()            
-        if not entityDictionary:
-            raise "entity dictionary is missing"
+    @staticmethod
+    def setEntityReference(newEntity, referenceModelName, referenceKey):
+        if not isinstance(newEntity, db.Model):
+            raise TypeError()
+        if not referenceModelName:
+            raise "referenced model name is not specified"
+        if not referenceKey:
+            raise "referenced key is not specified"  
+                
+        referenceModel = eval(referenceModelName)
+                    
+        ''' get referenced entity from datastore '''    
+        referenceEntity = Entity.getEntityFromKey(referenceModel, referenceKey)
         
-        modelName = model.__name__
-        modelKeyType = model.keyType
-        modelKeyValue = entity.key().id_or_name() if entity else None
+        ''' set new entity as the reference '''
+        modelName = newEntity.__class__.__name__
+        if hasattr(referenceEntity, modelName.lower()):
+            setattr(referenceEntity, modelName.lower(), newEntity)
+            referenceEntity.put()
         
-        entityDictionary['modelName'] = modelName
-        entityDictionary['key'] = {'type':modelKeyType, 'value':modelKeyValue}
-        entityDictionary['parent'] = args['parent'] if args.has_key('parent') else None
-        entityDictionary['parentIndex'] = args['parentIndex'] if args.has_key('parentIndex') else None
-        entityDictionary['index'] = args['index'] + 1 if args.has_key('index') else None
+        ''' set referenced entity as collection reference for the new entity '''
+        if hasattr(newEntity, referenceModelName.lower()):
+            setattr(newEntity, referenceModelName.lower(), referenceEntity)
+            newEntity.put()
         
 """""""""
 models
@@ -200,14 +225,14 @@ class EntityCollectionRequest(webapp2.RequestHandler):
             if collectionEntities:                
                 for index, entity in enumerate(collectionEntities):
                     entityDictionary = Entity.serializeEntity(model, entity)
-                    entityReferences = {'model':model, 
-                                        'entity':entity,
-                                        'parent':parentName,
-                                        'parentIndex':parentIndex,
-                                        'index':index+1}
-                    
-                    Entity.setEntityReferences(entityDictionary, **entityReferences)
-                    
+#                    entityReferences = {'model':model, 
+#                                        'entity':entity,
+#                                        'parent':parentName,
+#                                        'parentIndex':parentIndex,
+#                                        'index':index+1}
+#                    
+#                    Entity.setEntityReferences(entityDictionary, **entityReferences)
+#                    
                     retData.append(entityDictionary)
                     
 #            ''' add another empty record for continous input '''
@@ -241,45 +266,7 @@ class EntityRequest(webapp2.RequestHandler):
             setattr(entity,field,requestPayload[field]) 
             
         return entity
-            
-    @staticmethod
-    def setEntityReferenceFromRequest(newEntity, referencedByJsonStr):
-        if not isinstance(newEntity, db.Model):
-            raise TypeError()
-        if not referencedByJsonStr:
-            raise "referncedby model info is not specified"      
-                    
-        referencedBy = json.loads(referencedByJsonStr);
-        
-        ''' get reference model from request '''        
-        referenceModelName = referencedBy['referenceModel']
-        if not referenceModelName:
-            raise "referenced model name is not specified"
-        referenceModel = eval(referenceModelName)
-        
-        ''' get reference key '''
-        referenceKey = referencedBy['referenceKey']
-        if (isinstance(referenceKey, unicode)):
-            referenceKey = json.loads(referenceKey)
-        
-        if not referenceKey:
-            raise "referenced key is not specified"                
-        
-        ''' get referenced entity from datastore '''   
-        logging.info(referenceKey.__class__.__name__)
-        logging.info(referenceKey)
-        referenceEntity = Entity.getEntityFromKey(referenceModel, referenceKey)
-        
-        ''' set new entity as the reference '''
-        modelName = newEntity.__class__.__name__
-        if hasattr(referenceEntity, modelName.lower()):
-            setattr(referenceEntity, modelName.lower(), newEntity)
-            referenceEntity.put()
-        
-        ''' set referenced entity as collection reference for the new entity '''
-        if hasattr(newEntity, referenceModelName.lower()):
-            setattr(newEntity, referenceModelName.lower(), referenceEntity)
-            newEntity.put()
+                
                
     def get(self):
         ''' get model and key for the request entity '''
@@ -298,7 +285,12 @@ class EntityRequest(webapp2.RequestHandler):
             else:
                 entity = model()
             entity.put()
-            EntityRequest.setEntityReferenceFromRequest(entity, self.request.get('referencedBy'))            
+            
+            ''' set reference '''
+            referencedByStr = self.request.get('referencedBy')
+            if referencedByStr:
+                referencedByObj = json.loads(referencedByStr)
+                Entity.setEntityReference(entity, referencedByObj['modelName'], referencedByObj['key'])
         
         ''' output entity body '''
         outputDict = Entity.serializeEntity(model, entity)
@@ -336,7 +328,8 @@ class EntityRequest(webapp2.RequestHandler):
         ''' set all references for the entity '''
         referencedByStr = self.request.get('referencedBy')
         if referencedByStr:
-            EntityRequest.setEntityReferenceFromRequest(newEntity,referencedByStr)       
+            referenceModelObj = json.loads(referencedByStr)
+            Entity.setEntityReference(newEntity,referenceModelObj['modelName'], referenceModelObj['key'])       
             
         ''' construct response key info '''
         requestPayload['id'] = entityKey['value']

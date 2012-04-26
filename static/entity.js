@@ -59,8 +59,11 @@
         throw "key for the entity is missing"  
       if (!cfg.key.type)
         throw "type of query for entity is missing"
-   //   if (cfg.parent && !cfg.index)
-   //     throw "this entity has a parent but child index is not specified" 
+
+      if (cfg.index == null || typeof cfg.index == 'undefined')
+        this.index = '';
+      else
+        this.index = cfg.index;
 
       _.bindAll(this, 'attrsChange', 'setUrl', 'keyChange', 'setReferencedBy', 'addOrReplaceUrlParam');
 
@@ -125,11 +128,11 @@
     setReferencedBy:function(referencedByEntityMeta) {
       if (!$.isPlainObject(referencedByEntityMeta.key))
         throw "refernced entitny key is wrong type or not specified";
-      if (!$(referencedByEntityMeta.modelName).length
+      if (!referencedByEntityMeta.modelName)
         throw "model name for the referecedby entity is not specified";
 
       this.referencedByEntityMeta = referencedByEntityMeta;
-      this.addOrReplaceUrlParam('referencedBy', JSON.stringify(referencedByEntityMeta.key));      
+      this.addOrReplaceUrlParam('referencedBy', JSON.stringify(referencedByEntityMeta));      
     },
 
     attrsChange: function() {
@@ -143,16 +146,16 @@
           var referenceKeyValue = referenceMeta.key.value;
 
           if (! this.isNew()) {
-
             var referencedEntity = new Entity({
               name : modelName,
-              key: { type: referenceKeyType, value: referenceKeyValue }           
+              key: { type: referenceKeyType, value: referenceKeyValue } ,
+              index: referenceIndex
             });
 
             var referencedByEntityMeta = {
               key: this.key,
               modelName : this.modelName,
-              index: referenceIndex + 1
+              index: this.index              
             };            
             referencedEntity.setReferencedBy(referencedByEntityMeta);
             referencedEntity.fetch();
@@ -201,7 +204,7 @@
 
           var referencedByEntityMeta = {
             key: this.referencedBy.key,
-            modelName: this.referencedBy.name,
+            modelName: this.referencedBy.modelName,
             index: referencedBy.index
           };
 
@@ -288,22 +291,24 @@
         // only set vlaue for those fields that
         // the vlaue has explictily typed in         
         if(fieldValue)  
-          dataObj[fieldName] = fieldValue;    
+          dataObj[fieldName] = fieldValue;
       });          
 
       // add referncedby entity to query url to set the relationship
       var referencedByEntityMeta = this.model.referencedByEntityMeta;
-      var parentkeyContainer = $('#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-key-container');
+      if (referencedByEntityMeta) {
+        var parentkeyContainer = $('#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-key-container');
+      }
       
-      if(parentkeyContainer.length) {                
-       
+      if(parentkeyContainer && parentkeyContainer.length) { 
+
        var parentKeyJsonStr = parentkeyContainer.find('.field-value').text();         
         if (!parentKeyJsonStr) 
           throw ("parent key json must not be empty if entity's parent exits") 
 
-        var referencedKeyObj = {referenceModel: this.model.referencedByEntityMeta.modelName,
-                                referenceKey: parentKeyJsonStr}
-        this.model.setReferenceKey(referencedKeyObj);
+        // var referencedKeyObj = {referenceModel: this.model.referencedByEntityMeta.modelName,
+        //                         referenceKey: parentKeyJsonStr}
+        // this.model.setReferenceKey(referencedKeyObj);
       }
 
       this.model.save(dataObj, {wait : true});
@@ -314,10 +319,10 @@
       includedDisplayFields = ['key'];
 
       // fields that dont need to display
-      excludeDisplayFields = ['id', 'model', 'name', 'parent', 'parentIndex', 'index', 'modelName', 'openCollections'];
+      excludeDisplayFields = ['id', 'model', 'name', 'parent', 'collections', 'references', 'parentIndex', 'index', 'modelName', 'openCollections'];
 
       // display view for each field
-      var fields = this.model.attributes;    
+      var fields = this.model.attributes;
 
       _.each(fields, function(fieldValue,fieldName) {
 
@@ -356,7 +361,7 @@
       var entityContainer = getOrCreateContainer({          
           id: this.model.modelName + this.model.index,
           type: 'entity',
-          rootSelector: referencedByEntityMeta.modelName? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
+          rootSelector: referencedByEntityMeta? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
         });
 
       
@@ -513,15 +518,14 @@
 
       fieldContainer.empty();      
       fieldContainer.append($(fieldHtml));
-
       
       var referencedByEntityMeta = this.model.referencedByEntityMeta;
 
-      // append field container to entity container
+      // append field container to entity container      
       var entityContainer = getOrCreateContainer({
-        id: this.model.modelName + this.model.index,         
+        id: this.model.modelName + this.model.index,
         type: 'entity',
-        rootSelector: referencedByEntityMeta.modelName? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
+        rootSelector: referencedByEntityMeta? '#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-container' : null
       });
         
       if ( ! entityContainer.has(fieldContainer).length ) {
