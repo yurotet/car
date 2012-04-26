@@ -211,21 +211,22 @@ class InvoiceItem(db.Model):
 class EntityCollectionRequest(webapp2.RequestHandler):
     def get(self): 
         retData = []     
-        parentName = self.request.get('model')
-        parentIndex = self.request.get('index')
-        key = json.loads(self.request.get('key'))
+        referenceModelName = self.request.get('model')
+        referenceModelIndex = self.request.get('index')
+        referenceModelkey = json.loads(self.request.get('key'))
         
-        entity = Entity.getEntityFromKey(eval(parentName), key)         
-       
-        if entity:
+        ''' get referenced entity '''
+        referenceEntity = Entity.getEntityFromKey(eval(referenceModelName), referenceModelkey)
+               
+        if referenceEntity:
             itemModelName = self.request.get('itemModelName')  
-            collectionEntities = getattr(entity, itemModelName.lower() + '_set')
+            collectionEntities = getattr(referenceEntity, itemModelName.lower() + '_set')
             model = eval(itemModelName)
             
-            if collectionEntities:                
+            if collectionEntities:               
                 for index, entity in enumerate(collectionEntities):
-                    entityDictionary = Entity.serializeEntity(model, entity)
-#                    entityReferences = {'model':model, 
+                    serializedEntity = Entity.serializeEntity(model, entity)
+#                    serializedEntity = {'model':model, 
 #                                        'entity':entity,
 #                                        'parent':parentName,
 #                                        'parentIndex':parentIndex,
@@ -233,7 +234,7 @@ class EntityCollectionRequest(webapp2.RequestHandler):
 #                    
 #                    Entity.setEntityReferences(entityDictionary, **entityReferences)
 #                    
-                    retData.append(entityDictionary)
+                    retData.append(serializedEntity)
                     
 #            ''' add another empty record for continous input '''
 #            emptyEntityDictionary = Entity.dictionarizeEntity(eval(itemModelName),None)
