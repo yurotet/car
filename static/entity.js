@@ -69,14 +69,8 @@
 
       this.modelName = cfg.name;
       this.key = cfg.key;
-     /// this.parent = cfg.parent;
-     // this.index = cfg.index || '';
-     //this.parentIndex = cfg.parentIndex || '';
-      this.preSave = cfg.preSave;
 
-      // resouce key for this entity is represented as
-      //  a json string with key type and value    
-      // var obj = {};
+      this.preSave = cfg.preSave;
 
       // guess default value from key type
       if (this.key.type == 'key_name')
@@ -92,7 +86,8 @@
     },
 
     keyChange: function() {
-      this.setUrl(this.get('key'));
+      this.key = this.get('key');
+      this.setUrl(this.key);
     },
 
     setUrl: function(keyObj) {
@@ -100,10 +95,6 @@
         throw "key object must be an Object";
 
       this.keyUrl =  "model=" + this.modelName + "&key=" +  JSON.stringify( keyObj );
-
-   //  if ($(this.index).length) {
-    //    this.keyUrl += "&index=" + this.index;
-    //  }
 
       if(this.preSave) {
         this.keyUrl += "&preSave=1"
@@ -193,20 +184,30 @@
 
     parse: function(response) {
 
-      _.each($.makeArray(response), function(collectionItem, itemIndex) {             
+      var responseArray = $.makeArray(response);
+      
+      if (!responseArray.length && this.itemModelName == 'Invoice') {console.log(responseArray.length);
+        var presavedEntity = new Entity({
+          name :this.itemModelName,
+          key: {type:'id'},
+          index: 0,
+          presave: true
+        });
+
+        presavedEntity.fetch();
+      }
+
+      _.each(responseArray, function(collectionItem, itemIndex) { 
         var entity = new Entity( {
             name : this.itemModelName,
             key: collectionItem.key, 
-            index: itemIndex           
-           //index: collectionItem.index,
-           // parentIndex : collectionItem.parentIndex,
-           // parent : collectionItem.parent
+            index: itemIndex  
           });
 
           var referencedByEntityMeta = {
             key: this.referencedBy.key,
             modelName: this.referencedBy.modelName,
-            index: referencedBy.index
+            index: this.referencedBy.index
           };
 
           entity.setReferencedBy(referencedByEntityMeta);
@@ -294,22 +295,23 @@
           dataObj[fieldName] = fieldValue;
       });          
 
-      // add referncedby entity to query url to set the relationship
-      var referencedByEntityMeta = this.model.referencedByEntityMeta;
-      if (referencedByEntityMeta) {
-        var parentkeyContainer = $('#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-key-container');
-      }
+      // // add referncedby entity to query url to set the relationship
+      // var referencedByEntityMeta = this.model.referencedByEntityMeta;
       
-      if(parentkeyContainer && parentkeyContainer.length) { 
+      // if (referencedByEntityMeta) {
+      //   var parentkeyContainer = $('#' + referencedByEntityMeta.modelName + referencedByEntityMeta.index + '-key-container');
+      // }
+      
+      // if(parentkeyContainer && parentkeyContainer.length) { 
 
-       var parentKeyJsonStr = parentkeyContainer.find('.field-value').text();         
-        if (!parentKeyJsonStr) 
-          throw ("parent key json must not be empty if entity's parent exits") 
+      //  var parentKeyJsonStr = parentkeyContainer.find('.field-value').text();         
+      //   if (!parentKeyJsonStr) 
+      //     throw ("parent key json must not be empty if entity's parent exits") 
 
-        // var referencedKeyObj = {referenceModel: this.model.referencedByEntityMeta.modelName,
-        //                         referenceKey: parentKeyJsonStr}
-        // this.model.setReferenceKey(referencedKeyObj);
-      }
+      //   // var referencedKeyObj = {referenceModel: this.model.referencedByEntityMeta.modelName,
+      //   //                         referenceKey: parentKeyJsonStr}
+      //   // this.model.setReferenceKey(referencedKeyObj);
+      // }
 
       this.model.save(dataObj, {wait : true});
     },

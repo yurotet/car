@@ -10,7 +10,7 @@
 		timer: null,
 		delay: 200,		
 
-		initialize: function() {
+		initialize: function() {			
 			_.bindAll(this, 'render', 'sthTyped');
 			this.render();
 		},

@@ -47,8 +47,11 @@ class Entity:
     @staticmethod
     def serializeEntity(model, entity):
         ''' construct entity's none reference property list '''
-        fields = Entity.getNoneRefereceProperties(model)    
+        fields = Entity.getNoneRefereceProperties(model)
+            
         if entity:
+            if isinstance(entity,tuple):
+                entity = entity[1]
             serializedEntity = dict((field, getattr(entity,field)) for field in fields)
             keyValue = entity.key().id_or_name()   
             serializedEntity['id'] = keyValue           
@@ -162,9 +165,7 @@ class Invoice(db.Model):
     notes = db.TextProperty()
     openCollections = db.StringListProperty(default=['InvoiceItem'])
     collectionModels = ['InvoiceItem']
-    keyType = Entity.KeyType.ID
-    preSave = True
-    
+    keyType = Entity.KeyType.ID    
         
 ''' invoice items are grouped by invoice key '''
 class InvoiceItem(db.Model):
@@ -210,12 +211,13 @@ class EntityRequest(webapp2.RequestHandler):
         ''' get model and key for the request entity '''
         model = eval(self.request.get('model')) 
         key = json.loads(self.request.get('key'))
+        presave = bool(self.request.get('presave'))
         
         ''' load entity '''
         entity = Entity.getEntityFromKey(model, key)
         
         ''' create new entity for presave models '''
-        if not entity and hasattr(model, 'preSave') and getattr(model, 'preSave'):
+        if not entity and presave:
             keyType = key['type']
             keyValue = key['value']
             if keyType == Entity.KeyType.KEYNAME:
