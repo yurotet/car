@@ -67,8 +67,8 @@ class Entity:
          
         ''' construct a reference property list '''
         referenceList = [] 
-        if(hasattr(model,'referenceVars')): 
-            for var in model.referenceVars:
+        if(hasattr(model,'references')): 
+            for var in model.references:
                 ''' construct refercne entity type '''
                 referenceModelName = var.capitalize()            
                 referenceModelKeyType = eval(referenceModelName).keyType
@@ -87,10 +87,10 @@ class Entity:
         serializedEntity['references'] = referenceList
                  
         ''' construct a collection list '''
-        if(hasattr(model, 'collectionModels')):
-            serializedEntity['collections'] = model.collectionModels;
+        if(hasattr(model, 'referencedBys')):
+            serializedEntity['referencedBys'] = model.referencedBys;
         else:
-            serializedEntity['collections'] = []
+            serializedEntity['referencedBys'] = []
                    
         return serializedEntity
         
@@ -122,10 +122,22 @@ class Entity:
 """""""""
 models
 
-note: if some property is reference property
-mkae sure the variable name is the lower case
-of the name of the model 
-"""""""""
+note:
+referencedBys - 
+e.g. if A is referenced by B,
+then B.reference = A, which means A
+is the container of B instances.
+
+reference -
+e.g. if A is referencing B,
+A.reference = B, which means A instance
+needs to be created first before B instance 
+can be set as the reference to A.
+
+referencedByAutoNew
+e.g this will tell client side what models needs
+to be created automatically as the new input 
+""""""""" 
 class Customer(db.Model):
     firstName = db.StringProperty()
     lastname = db.StringProperty()
@@ -133,15 +145,13 @@ class Customer(db.Model):
     address = db.StringProperty()
     keyType = Entity.KeyType.ID
     
-''' vechile search is the entry point
-    of the system, all related info is
-    abtained via vechile rego number '''
+''' vechiel is identifield by vechile rego number. '''
 class Vechile(db.Model):
     rego = db.StringProperty()
     make = db.StringProperty()
     model = db.StringProperty()
     odometer = db.StringProperty()
-    transmission = db.StringProperty()
+    transmission = db.StringProperty() 
     year = db.StringProperty()
     engineSize = db.StringProperty()
     fuleType = db.StringProperty()
@@ -150,9 +160,9 @@ class Vechile(db.Model):
     turbo = db.StringProperty()
     color = db.StringProperty()
     customer = db.ReferenceProperty(Customer)
-    openCollections = db.StringListProperty(default=['Invoice'])    
-    collectionModels = ['Invoice']    
-    referenceVars = ['customer']
+    referencedBysAutoNew = db.StringListProperty(default=['Invoice'])    
+    referencedBys = ['Invoice']
+    references = ['customer']
     keyType = Entity.KeyType.KEYNAME
 
 ''' invoice links to customer, vechile and invoice items.
@@ -163,8 +173,8 @@ class Invoice(db.Model):
     vechile = db.ReferenceProperty(Vechile)
     labour = db.StringProperty()
     notes = db.TextProperty()
-    openCollections = db.StringListProperty(default=['InvoiceItem'])
-    collectionModels = ['InvoiceItem']
+    referencedBysAutoNew = db.StringListProperty(default=['InvoiceItem'])
+    referencedBys = ['InvoiceItem']
     keyType = Entity.KeyType.ID    
         
 ''' invoice items are grouped by invoice key '''
@@ -254,8 +264,8 @@ class EntityRequest(webapp2.RequestHandler):
         requestPayload = json.loads(self.request.body)
         
         ''' set default open collections for the entity ''' 
-        if hasattr(newEntity, 'openCollections'):
-            requestPayload['openCollections'] = newEntity.openCollections
+        if hasattr(newEntity, 'referencedBysAutoNew'):
+            requestPayload['referencedBysAutoNew'] = newEntity.referencedBysAutoNew
          
         ''' fill the new entity with posted data '''     
         newEntity = EntityRequest.fillEntityWithRequestPayload(newEntity, requestPayload)

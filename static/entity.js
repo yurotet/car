@@ -132,29 +132,29 @@
    
       // fetch referenced entities      
       _.each(this.get('references'), function(referenceMeta, referenceIndex) {
-          var modelName = referenceMeta.modelName;
+          var referenceModelName = referenceMeta.modelName;
           var referenceKeyType = referenceMeta.key.type;
           var referenceKeyValue = referenceMeta.key.value;
 
           if (! this.isNew()) {
             var referencedEntity = new Entity({
-              name : modelName,
+              name : referenceModelName,
               key: { type: referenceKeyType, value: referenceKeyValue } ,
               index: referenceIndex
             });
 
-            var referencedByEntityMeta = {
+            referencedEntity.setReferencedBy({
               key: this.key,
               modelName : this.modelName,
               index: this.index              
-            };            
-            referencedEntity.setReferencedBy(referencedByEntityMeta);
+            });
+
             referencedEntity.fetch();
           }
       }, this);
 
       // fetch entity collecions and parse each item      
-      _.each(this.get('collections'), function(collectionModelName){
+      _.each(this.get('referencedBys'), function(collectionModelName){
         if (! this.isNew()) {
           var collection = new EntityCollection({
             itemModelName:collectionModelName,
@@ -186,7 +186,7 @@
 
       var responseArray = $.makeArray(response);
       
-      if (!responseArray.length && this.itemModelName == 'Invoice') {console.log(responseArray.length);
+      if (!responseArray.length && this.itemModelName == 'Invoice') {
         var presavedEntity = new Entity({
           name :this.itemModelName,
           key: {type:'id'},
@@ -213,15 +213,15 @@
           entity.setReferencedBy(referencedByEntityMeta);
           entity.set(collectionItem);
 
-      }, this);
+      }, this); 
 
       // if the referenced entity allow collection items to be continuously created, then
       // besides fetching all already stored collection items, an extra input item needs 
       // to be fetched.
-      var openCollecitonsOfReferencedBy = this.referencedBy.get('openCollections');  
+      var referencedBysAutoNew = this.referencedBy.get('referencedBysAutoNew');  
 
-      if (openCollecitonsOfReferencedBy) {
-          var openToNewItems =  _.find(openCollecitonsOfReferencedBy, function(e) { return e == this.itemModelName}, this);        
+      if (referencedBysAutoNew) {
+          var openToNewItems =  _.find(referencedBysAutoNew, function(e) { return e == this.itemModelName}, this);        
           if (openToNewItems) {
             // fetch an input colleciton item
             var inputEntity = new Entity( {
@@ -321,7 +321,7 @@
       includedDisplayFields = ['key'];
 
       // fields that dont need to display
-      excludeDisplayFields = ['id', 'model', 'name', 'parent', 'collections', 'references', 'parentIndex', 'index', 'modelName', 'openCollections'];
+      excludeDisplayFields = ['id', 'model', 'name', 'parent', 'referencedBys', 'references', 'parentIndex', 'index', 'modelName', 'referencedBysAutoNew'];
 
       // display view for each field
       var fields = this.model.attributes;
